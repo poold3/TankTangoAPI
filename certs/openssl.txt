@@ -1,0 +1,5 @@
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes -keyout server.key -out server.crt -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+openssl x509 -in server.crt -text -noout
+
+You have to import the server.crt file into chrome's trusted certificates for your client to be able to use this.
