@@ -6,10 +6,10 @@ import { createNewGame, joinGame } from "./game";
 import { error } from "console";
 
 export function setRoutes(app: Application): void {
-  app.post("/create/", (httpRequest, httpResponse) => {
+  app.post("/create/", async (httpRequest, httpResponse) => {
     try {
       const request: CreateRequest = httpRequest.body;
-      const response: CreateResponse = createNewGame(request);
+      const response: CreateResponse = await createNewGame(request);
       httpResponse.status(200).send(JSON.stringify(response));
     } catch (error) {
       logger.error(error);
@@ -17,10 +17,10 @@ export function setRoutes(app: Application): void {
     }
   })
 
-  app.post("/join/", (httpRequest, httpResponse) => {
+  app.post("/join/", async (httpRequest, httpResponse) => {
     try {
       const request: JoinRequest = httpRequest.body;
-      const response: JoinResponse = joinGame(request);
+      const response: JoinResponse = await joinGame(request);
       httpResponse.status(200).send(JSON.stringify(response));
     } catch (error) {
       logger.error(error);
