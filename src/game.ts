@@ -18,12 +18,15 @@ export class Game {
   public tanks: Map<string, Tank>;
   public wss: WebSocketServer;
   public state: GameState;
+  public colorsAvailable: Array<boolean>;
 
   constructor(gameCode: string, port: number) {
     this.gameCode = gameCode;
     this.port = port;
     this.tanks = new Map<string, Tank>();
     this.state = GameState.Waiting;
+    this.colorsAvailable = new Array<boolean>(4);
+    this.colorsAvailable.fill(true);
 
     const serverOptions = {
       key: fs.readFileSync("./certs/server.key"),
@@ -40,6 +43,18 @@ export class Game {
       ws.on("message", async (message: string) => {
         tank = JSON.parse(message);
         await lock.acquire(this.port.toString(), () => {
+          if (this.tanks.size == 0) {
+            tank.gameAdmin = true;
+          }
+          if (tank.color == 0) {
+            for (let i = 0; i < 4; ++i) {
+              if (this.colorsAvailable[i]) {
+                tank.color = i + 1;
+                this.colorsAvailable[i] = false;
+                break;
+              }
+            }
+          }
           this.tanks.set(tank.gamerName, tank);
 
           if (this.state === GameState.Waiting) {
@@ -54,6 +69,13 @@ export class Game {
         if (tank) {
           await lock.acquire(this.port.toString(), () => {
             this.tanks.delete(tank.gamerName);
+            this.colorsAvailable[tank.color - 1] = true;
+            if (tank.gameAdmin && this.tanks.size > 0) {
+              const remainingTanks = Array.from(this.tanks.values());
+              const firstTank = remainingTanks[0];
+              firstTank.gameAdmin = true;
+              this.tanks.set(firstTank.gamerName, firstTank);
+            }
   
             if (this.state === GameState.Waiting) {
               this.wss.clients.forEach((client: WebSocket) => {
@@ -100,10 +122,13 @@ export class Game {
     });
     return numTanks;
   }
+
+
 }
 
 export class Tank {
   public gamerName: string;
+  public gameAdmin: boolean = false;
   public type: number;
   public alive: boolean = false;
   public positionX: number = 0;
