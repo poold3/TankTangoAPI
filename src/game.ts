@@ -1,4 +1,4 @@
-import { CreateRequest, JoinRequest } from "./requests";
+import { CreateRequest, JoinRequest, WssMessage, MessageTypes } from "./requests";
 import { CreateResponse, JoinResponse } from "./responses";
 import { WebSocketServer, WebSocket } from "ws";
 import AsyncLock from "async-lock";
@@ -41,28 +41,35 @@ export class Game {
 
       let tank: Tank;
       ws.on("message", async (message: string) => {
-        tank = JSON.parse(message);
-        await lock.acquire(this.port.toString(), () => {
-          if (this.tanks.size == 0) {
-            tank.gameAdmin = true;
-          }
-          if (tank.color == 0) {
-            for (let i = 0; i < 4; ++i) {
-              if (this.colorsAvailable[i]) {
-                tank.color = i + 1;
-                this.colorsAvailable[i] = false;
-                break;
+        const wssMessage: WssMessage = JSON.parse(message);
+        tank = wssMessage.tank;
+        if (wssMessage.messageType == MessageTypes.Game) {
+          await lock.acquire(this.port.toString(), () => {
+            this.tanks.set(tank.gamerName, tank);
+          });
+        } else if (wssMessage.messageType == MessageTypes.First) {
+          await lock.acquire(this.port.toString(), () => {
+            if (this.tanks.size == 0) {
+              tank.gameAdmin = true;
+            }
+            if (tank.color == 0) {
+              for (let i = 0; i < 4; ++i) {
+                if (this.colorsAvailable[i]) {
+                  tank.color = i + 1;
+                  this.colorsAvailable[i] = false;
+                  break;
+                }
               }
             }
-          }
-          this.tanks.set(tank.gamerName, tank);
-
-          if (this.state === GameState.Waiting) {
-            this.wss.clients.forEach((client: WebSocket) => {
-              client.send(JSON.stringify(Array.from(this.tanks.values())));
-            });
-          }
-        });
+            this.tanks.set(tank.gamerName, tank);
+  
+            if (this.state === GameState.Waiting) {
+              this.wss.clients.forEach((client: WebSocket) => {
+                client.send(JSON.stringify(Array.from(this.tanks.values())));
+              });
+            }
+          });
+        }
       });
 
       ws.on("close", async () => {
