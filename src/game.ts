@@ -1,5 +1,5 @@
-import { CreateRequest, JoinRequest, WssMessage, MessageTypes } from "./requests";
-import { CreateResponse, JoinResponse } from "./responses";
+import { CreateRequest, JoinRequest, WssMessage, MessageTypes, StartRoundRequest } from "./requests";
+import { CreateResponse, JoinResponse, StartRoundResponse, WssOutMessage } from "./responses";
 import { WebSocketServer, WebSocket } from "ws";
 import AsyncLock from "async-lock";
 import { logger } from "./logger";
@@ -64,8 +64,13 @@ export class Game {
             this.tanks.set(tank.gamerName, tank);
   
             if (this.state === GameState.Waiting) {
+              const message: WssOutMessage = {
+                tanks: Array.from(this.tanks.values()),
+                maze: undefined
+              }
+              const jsonMessage = JSON.stringify(message);
               this.wss.clients.forEach((client: WebSocket) => {
-                client.send(JSON.stringify(Array.from(this.tanks.values())));
+                client.send(jsonMessage);
               });
             }
           });
@@ -85,8 +90,13 @@ export class Game {
             }
   
             if (this.state === GameState.Waiting) {
+              const message: WssOutMessage = {
+                tanks: Array.from(this.tanks.values()),
+                maze: undefined
+              }
+              const jsonMessage = JSON.stringify(message);
               this.wss.clients.forEach((client: WebSocket) => {
-                client.send(JSON.stringify(Array.from(this.tanks.values())));
+                client.send(jsonMessage);
               });
             }
           });
@@ -130,7 +140,18 @@ export class Game {
     return numTanks;
   }
 
-
+  public async sendMaze(maze: Maze): Promise<void> {
+    const message: WssOutMessage = {
+      tanks: undefined,
+      maze: maze
+    }
+    const jsonMessage = JSON.stringify(message);
+    await lock.acquire(this.port.toString(), () => {
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(jsonMessage);
+      });
+    });
+  }
 }
 
 export class Tank {
@@ -241,6 +262,211 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
     response.success = false;
     response.message = "An error occurred while joining your game. Please try again later.";
     response.port = -1;
+  }
+  return response;
+}
+
+export class Room {
+  public plusY: boolean;
+  public minusY: boolean;
+  public plusX: boolean;
+  public minusX: boolean;
+  public numEdges: number;
+  constructor() {
+    this.plusY = false;
+    this.minusY = false;
+    this.plusX = false;
+    this.minusX = false;
+    this.numEdges = 0;
+  }
+
+  reset() {
+    this.plusY = false;
+    this.minusY = false;
+    this.plusX = false;
+    this.minusX = false;
+    this.numEdges = 0;
+  }
+}
+
+export class Maze {
+  public width: number;
+  public height: number;
+  public step: number;
+  public numRoomsWide: number;
+  public numRoomsHigh: number;
+  public rooms: Array<Array<Room>>;
+
+  constructor(width: number, height: number, step: number) {
+    this.width = width;
+    this.height = height;
+    this.step = step;
+    this.numRoomsWide = this.width / this.step;
+    this.numRoomsHigh = this.height / this.step;
+    this.rooms = new Array(this.numRoomsHigh);
+    for (let i = 0; i < this.numRoomsHigh; ++i) {
+      this.rooms[i] = new Array<Room>(this.numRoomsWide);
+      for (let j = 0; j < this.numRoomsWide; ++j) {
+        this.rooms[i][j] = new Room();
+      }
+    }
+    this.fillMaze();
+  }
+
+  fillMaze() {
+    //Erase all edges in points
+    for (let i = 0; i < this.rooms.length; ++i) {
+      for (let j = 0; j < this.rooms[i].length; ++j) {
+        this.rooms[i][j].reset();
+      }
+    }
+
+    //Reinstate maze border edges
+    for (let i = 0; i < this.numRoomsWide; ++i) {
+      this.rooms[0][i].minusY = true;
+      this.rooms[0][i].numEdges += 1;
+      this.rooms[this.numRoomsHigh - 1][i].plusY = true;
+      this.rooms[this.numRoomsHigh - 1][i].numEdges += 1;
+    }
+
+    for (let i = 0; i < this.numRoomsHigh; ++i) {
+      this.rooms[i][0].minusX = true;
+      this.rooms[i][0].numEdges += 1;
+      this.rooms[i][this.numRoomsWide - 1].plusX = true;
+      this.rooms[i][this.numRoomsWide - 1].numEdges += 1;
+    }
+
+    //Create maze
+    const maxEdges = Math.round(this.numRoomsWide * this.numRoomsHigh * 0.75);
+    let edgeCount = 0;
+    while (edgeCount < maxEdges) {
+      const row = Math.floor(Math.random() * this.numRoomsHigh);
+      const column = Math.floor(Math.random() * this.numRoomsWide);
+      if (this.rooms[row][column].numEdges == 3) {
+        continue;
+      }
+      let edgeType = Math.floor(Math.random() * 4);
+      let edgeAssigned = false;
+      while (!edgeAssigned) {
+        if (edgeType % 4 === 0 && !this.rooms[row][column].minusX) {
+          this.rooms[row][column].minusX = true;
+          this.rooms[row][column - 1].plusX = true;
+          edgeAssigned = true;
+          if (this.isMazeValid()) {
+            this.rooms[row][column].numEdges += 1;
+            this.rooms[row][column - 1].numEdges += 1;
+            edgeCount += 1;
+          } else {
+            this.rooms[row][column].minusX = false;
+            this.rooms[row][column - 1].plusX = false;
+          }
+        } else if (edgeType % 4 === 1 && !this.rooms[row][column].plusX) {
+          this.rooms[row][column].plusX = true;
+          this.rooms[row][column + 1].minusX = true;
+          edgeAssigned = true;
+          if (this.isMazeValid()) {
+            this.rooms[row][column].numEdges += 1;
+            this.rooms[row][column + 1].numEdges += 1;
+            edgeCount += 1;
+          } else {
+            this.rooms[row][column].plusX = false;
+            this.rooms[row][column + 1].minusX = false;
+          }
+        } else if (edgeType % 4 === 2 && !this.rooms[row][column].minusY) {
+          this.rooms[row][column].minusY = true;
+          this.rooms[row - 1][column].plusY = true;
+          edgeAssigned = true;
+          if (this.isMazeValid()) {
+            this.rooms[row][column].numEdges += 1;
+            this.rooms[row - 1][column].numEdges += 1;
+            edgeCount += 1;
+          } else {
+            this.rooms[row][column].minusY = false;
+            this.rooms[row - 1][column].plusY = false;
+          }
+        } else if (edgeType % 4 === 3 && !this.rooms[row][column].plusY) {
+          this.rooms[row][column].plusY = true;
+          this.rooms[row + 1][column].minusY = true;
+          edgeAssigned = true;
+          if (this.isMazeValid()) {
+            this.rooms[row][column].numEdges += 1;
+            this.rooms[row + 1][column].numEdges += 1;
+            edgeCount += 1;
+          } else {
+            this.rooms[row][column].plusY = false;
+            this.rooms[row + 1][column].minusY = false;
+          }
+        }
+        edgeType += 1;
+      }
+    }
+  }
+
+  private isMazeValidHelper(row: number, column: number, explored: Array<Array<boolean>>): void {
+    if (explored[row][column]) {
+      return;
+    }
+    explored[row][column] = true;
+    const room = this.rooms[row][column];
+    if (!(room.minusX)) {
+      this.isMazeValidHelper(row, column - 1, explored);
+    }
+    if (!(room.plusX)) {
+      this.isMazeValidHelper(row, column + 1, explored);
+    }
+    if (!(room.minusY)) {
+      this.isMazeValidHelper(row - 1, column, explored);
+    }
+    if (!(room.plusY)) {
+      this.isMazeValidHelper(row + 1, column, explored);
+    }
+  }
+
+  isMazeValid(): boolean {
+    const explored = new Array(this.numRoomsHigh);
+    for (let i = 0; i < explored.length; ++i) {
+      explored[i] = new Array<boolean>(this.numRoomsWide).fill(false);
+    }
+    
+    this.isMazeValidHelper(0, 0, explored);
+
+    for (let i = 0; i < explored.length; ++i) {
+      for (let j = 0; j < explored[i].length; ++j) {
+        if (!explored[i][j]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+}
+
+export async function startRound(startRoundRequest: StartRoundRequest): Promise<StartRoundResponse> {
+  const response: StartRoundResponse = {
+    success: false,
+    message: ""
+  }
+  try {
+    let game: Game | undefined;
+    await lock.acquire("games", () => {
+      game = games.get(startRoundRequest.gameCode);
+    });
+    if (!game) {
+      response.success = false;
+      response.message = "Invalid game code.";
+      return response;
+    }
+
+    const maze: Maze = new Maze(750, 450, 75);
+    await game.sendMaze(maze);
+
+
+    response.success = true;
+  } catch (error) {
+    logger.error(error);
+    response.success = false;
+    response.message = "An error occurred while joining your game. Please try again later.";
   }
   return response;
 }

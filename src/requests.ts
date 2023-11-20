@@ -11,6 +11,10 @@ export interface JoinRequest {
   gameCode: string;
 }
 
+export interface StartRoundRequest {
+  gameCode: string;
+}
+
 export enum MessageTypes {
   First,
   Game
