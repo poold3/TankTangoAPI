@@ -1,5 +1,3 @@
-import { Maze, Tank } from "./game";
-
 export interface CreateResponse {
   success: boolean;
   message: string;
@@ -18,7 +16,15 @@ export interface StartRoundResponse {
   message: string;
 }
 
+export enum WssOutMessageTypes {
+  Maze,
+  TanksUpdate,
+  SelectedTankUpdate,
+  GameStateUpdate,
+  Error
+}
+
 export interface WssOutMessage {
-  tanks: Array<Tank> | undefined,
-  maze: Maze | undefined
+  messageType: WssOutMessageTypes,
+  data: string
 }

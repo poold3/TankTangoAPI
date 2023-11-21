@@ -1,14 +1,17 @@
-import { CreateRequest, JoinRequest, WssMessage, MessageTypes, StartRoundRequest } from "./requests";
-import { CreateResponse, JoinResponse, StartRoundResponse, WssOutMessage } from "./responses";
+import { CreateRequest, JoinRequest, StartRoundRequest, WssInMessage, WssInMessageTypes } from "./requests";
+import { CreateResponse, JoinResponse, StartRoundResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
 import { WebSocketServer, WebSocket } from "ws";
 import AsyncLock from "async-lock";
 import { logger } from "./logger";
 import https, { Server } from "https";
 import fs from "fs";
+import { Maze } from "./maze";
+import { Tank } from "./tank";
 const lock = new AsyncLock();
 
-const enum GameState {
+export const enum GameState {
   Waiting,
+  Countdown,
   Running
 }
 
@@ -19,14 +22,16 @@ export class Game {
   public wss: WebSocketServer;
   public state: GameState;
   public colorsAvailable: Array<boolean>;
+  public runningInterval: number = 0;
+  public maze: Maze;
 
   constructor(gameCode: string, port: number) {
     this.gameCode = gameCode;
     this.port = port;
     this.tanks = new Map<string, Tank>();
     this.state = GameState.Waiting;
-    this.colorsAvailable = new Array<boolean>(4);
-    this.colorsAvailable.fill(true);
+    this.colorsAvailable = new Array<boolean>(4).fill(true);
+    this.maze = new Maze(0, 0, 1);
 
     const serverOptions = {
       key: fs.readFileSync("./certs/server.key"),
@@ -41,32 +46,55 @@ export class Game {
 
       let tank: Tank;
       ws.on("message", async (message: string) => {
-        const wssMessage: WssMessage = JSON.parse(message);
-        tank = wssMessage.tank;
-        if (wssMessage.messageType == MessageTypes.Game) {
+        const wssMessage: WssInMessage = JSON.parse(message);
+        if (wssMessage.messageType === WssInMessageTypes.Connection) {
+          tank = JSON.parse(wssMessage.data);
           await lock.acquire(this.port.toString(), () => {
-            this.tanks.set(tank.gamerName, tank);
-          });
-        } else if (wssMessage.messageType == MessageTypes.First) {
-          await lock.acquire(this.port.toString(), () => {
+            // If the first to join the game, make admin
             if (this.tanks.size == 0) {
               tank.gameAdmin = true;
             }
-            if (tank.color == 0) {
-              for (let i = 0; i < 4; ++i) {
-                if (this.colorsAvailable[i]) {
-                  tank.color = i + 1;
-                  this.colorsAvailable[i] = false;
-                  break;
-                }
+
+            // Assign a color to the new tank
+            for (let i = 0; i < 4; ++i) {
+              if (this.colorsAvailable[i]) {
+                tank.color = i + 1;
+                this.colorsAvailable[i] = false;
+                break;
               }
             }
+            // Add tank to the game
             this.tanks.set(tank.gamerName, tank);
   
+            // If the game is in the Waiting state, send a SelectedTanksUpdate out to the clients. This will update the waiting room
             if (this.state === GameState.Waiting) {
               const message: WssOutMessage = {
-                tanks: Array.from(this.tanks.values()),
-                maze: undefined
+                messageType: WssOutMessageTypes.SelectedTankUpdate,
+                data: JSON.stringify(Array.from(this.tanks.values()))
+              }
+              const jsonMessage = JSON.stringify(message);
+              this.wss.clients.forEach((client: WebSocket) => {
+                client.send(jsonMessage);
+              });
+            }
+          });
+        } else if (wssMessage.messageType === WssInMessageTypes.TankUpdate) {
+          tank = JSON.parse(wssMessage.data);
+          await lock.acquire(this.port.toString(), () => {
+            // Replace current tank with new tank
+            this.tanks.set(tank.gamerName, tank);
+          });
+        } else if (wssMessage.messageType === WssInMessageTypes.WaitingRoomTankUpdate) {
+          tank = JSON.parse(wssMessage.data);
+          await lock.acquire(this.port.toString(), () => {
+            // Replace current tank with new tank
+            this.tanks.set(tank.gamerName, tank);
+
+            // If the game is in the Waiting state(It should be but just a double check), send a SelectedTanksUpdate out to the clients. This will update the waiting room
+            if (this.state === GameState.Waiting) {
+              const message: WssOutMessage = {
+                messageType: WssOutMessageTypes.SelectedTankUpdate,
+                data: JSON.stringify(Array.from(this.tanks.values()))
               }
               const jsonMessage = JSON.stringify(message);
               this.wss.clients.forEach((client: WebSocket) => {
@@ -80,45 +108,71 @@ export class Game {
       ws.on("close", async () => {
         if (tank) {
           await lock.acquire(this.port.toString(), () => {
+            // Delete tank from game
             this.tanks.delete(tank.gamerName);
+
+            // Make tank color available again
             this.colorsAvailable[tank.color - 1] = true;
-            if (tank.gameAdmin && this.tanks.size > 0) {
-              const remainingTanks = Array.from(this.tanks.values());
-              const firstTank = remainingTanks[0];
-              firstTank.gameAdmin = true;
-              this.tanks.set(firstTank.gamerName, firstTank);
-            }
-  
-            if (this.state === GameState.Waiting) {
-              const message: WssOutMessage = {
-                tanks: Array.from(this.tanks.values()),
-                maze: undefined
+
+            if (this.tanks.size > 0) {
+              // Still players in the game
+              // Reassign the game admin if this tank was the admin
+              if (tank.gameAdmin && this.tanks.size > 0) {
+                const remainingTanks = Array.from(this.tanks.values());
+                const firstTank = remainingTanks[0];
+                firstTank.gameAdmin = true;
+                this.tanks.set(firstTank.gamerName, firstTank);
               }
-              const jsonMessage = JSON.stringify(message);
-              this.wss.clients.forEach((client: WebSocket) => {
-                client.send(jsonMessage);
+
+              // If the game is in the waiting stage, send a selectedtanksupdate to update the waiting room
+              if (this.state === GameState.Waiting) {
+                const message: WssOutMessage = {
+                  messageType: WssOutMessageTypes.SelectedTankUpdate,
+                  data: JSON.stringify(Array.from(this.tanks.values()))
+                }
+                const jsonMessage = JSON.stringify(message);
+                this.wss.clients.forEach((client: WebSocket) => {
+                  client.send(jsonMessage);
+                });
+              }
+            } else {
+              // No more tanks in the game. Shut down the servers and reset the game structures
+              this.wss.close(() => {
+                logger.info("Closing wss for port " + this.port.toString());
               });
+              server.close(() => {
+                logger.info("Closing server for port " + this.port.toString());
+              });
+              endGame(this.gameCode);
             }
           });
-
-          const numTanks: number = await this.numTanks();
-          if (numTanks === 0) {
-            this.wss.close(() => {
-              logger.info("Closing wss for port " + this.port.toString());
-            });
-            server.close(() => {
-              logger.info("Closing server for port " + this.port.toString());
-            });
-            endGame(this.gameCode);
-          }
         }
       });
     });
 
     this.wss.on("error", (error: Error) => {
       logger.error(error);
+      // Try to send error message to clients
+      const message: WssOutMessage = {
+        messageType: WssOutMessageTypes.Error,
+        data: JSON.stringify(error.message)
+      }
+      const jsonMessage = JSON.stringify(message);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(jsonMessage);
+      });
+
+      // Shut down the servers and reset the game structures
+      this.wss.close(() => {
+        logger.info("Closing wss for port " + this.port.toString());
+      });
+      server.close(() => {
+        logger.info("Closing server for port " + this.port.toString());
+      });
+      endGame(this.gameCode);
     });
 
+    // Start up websocket server!
     server.listen(this.port, ()=> {
       logger.info("Server is listening on " + this.port.toString());
     })
@@ -141,41 +195,43 @@ export class Game {
   }
 
   public async sendMaze(maze: Maze): Promise<void> {
+    this.maze = maze;
     const message: WssOutMessage = {
-      tanks: undefined,
-      maze: maze
+      messageType: WssOutMessageTypes.Maze,
+      data: JSON.stringify(this.maze)
     }
     const jsonMessage = JSON.stringify(message);
-    await lock.acquire(this.port.toString(), () => {
-      this.wss.clients.forEach((client: WebSocket) => {
-        client.send(jsonMessage);
-      });
+    this.wss.clients.forEach((client: WebSocket) => {
+      client.send(jsonMessage);
     });
   }
-}
 
-export class Tank {
-  public gamerName: string;
-  public gameAdmin: boolean = false;
-  public type: number;
-  public alive: boolean = false;
-  public positionX: number = 0;
-  public positionY: number = 0;
-  public heading: number = 0.0;
-  public turretHeading: number = 0.0;
-  public color: number = 0;
+  public async getNumAlive(): Promise<number> {
+    let numAlive: number = 0;
+    await lock.acquire(this.port.toString(), () => { 
+      Array.from(this.tanks.values()).forEach((tank: Tank) => {
+        if (tank.alive) {
+          numAlive += 1;
+        }
+      })
+    });
+    return numAlive;
+  }
 
-  constructor(gamerName: string, type: number) {
-    this.gamerName = gamerName;
-    this.type = type;
+  public async startRound(): Promise<void> {
+    const maze: Maze = new Maze(750, 450, 75);
+
   }
 }
+
+
 
 const games: Map<string, Game> = new Map<string, Game>();
 const ports: Map<number, boolean> = new Map<number, boolean>();
 initializePorts();
 
 function initializePorts(): void {
+  // Set all ports as not being used.
   for (let i = 3001; i <= 3020; ++i) {
     ports.set(i, false);
   }
@@ -266,182 +322,6 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
   return response;
 }
 
-export class Room {
-  public plusY: boolean;
-  public minusY: boolean;
-  public plusX: boolean;
-  public minusX: boolean;
-  public numEdges: number;
-  constructor() {
-    this.plusY = false;
-    this.minusY = false;
-    this.plusX = false;
-    this.minusX = false;
-    this.numEdges = 0;
-  }
-
-  reset() {
-    this.plusY = false;
-    this.minusY = false;
-    this.plusX = false;
-    this.minusX = false;
-    this.numEdges = 0;
-  }
-}
-
-export class Maze {
-  public width: number;
-  public height: number;
-  public step: number;
-  public numRoomsWide: number;
-  public numRoomsHigh: number;
-  public rooms: Array<Array<Room>>;
-
-  constructor(width: number, height: number, step: number) {
-    this.width = width;
-    this.height = height;
-    this.step = step;
-    this.numRoomsWide = this.width / this.step;
-    this.numRoomsHigh = this.height / this.step;
-    this.rooms = new Array(this.numRoomsHigh);
-    for (let i = 0; i < this.numRoomsHigh; ++i) {
-      this.rooms[i] = new Array<Room>(this.numRoomsWide);
-      for (let j = 0; j < this.numRoomsWide; ++j) {
-        this.rooms[i][j] = new Room();
-      }
-    }
-    this.fillMaze();
-  }
-
-  fillMaze() {
-    //Erase all edges in points
-    for (let i = 0; i < this.rooms.length; ++i) {
-      for (let j = 0; j < this.rooms[i].length; ++j) {
-        this.rooms[i][j].reset();
-      }
-    }
-
-    //Reinstate maze border edges
-    for (let i = 0; i < this.numRoomsWide; ++i) {
-      this.rooms[0][i].minusY = true;
-      this.rooms[0][i].numEdges += 1;
-      this.rooms[this.numRoomsHigh - 1][i].plusY = true;
-      this.rooms[this.numRoomsHigh - 1][i].numEdges += 1;
-    }
-
-    for (let i = 0; i < this.numRoomsHigh; ++i) {
-      this.rooms[i][0].minusX = true;
-      this.rooms[i][0].numEdges += 1;
-      this.rooms[i][this.numRoomsWide - 1].plusX = true;
-      this.rooms[i][this.numRoomsWide - 1].numEdges += 1;
-    }
-
-    //Create maze
-    const maxEdges = Math.round(this.numRoomsWide * this.numRoomsHigh * 0.75);
-    let edgeCount = 0;
-    while (edgeCount < maxEdges) {
-      const row = Math.floor(Math.random() * this.numRoomsHigh);
-      const column = Math.floor(Math.random() * this.numRoomsWide);
-      if (this.rooms[row][column].numEdges == 3) {
-        continue;
-      }
-      let edgeType = Math.floor(Math.random() * 4);
-      let edgeAssigned = false;
-      while (!edgeAssigned) {
-        if (edgeType % 4 === 0 && !this.rooms[row][column].minusX) {
-          this.rooms[row][column].minusX = true;
-          this.rooms[row][column - 1].plusX = true;
-          edgeAssigned = true;
-          if (this.isMazeValid()) {
-            this.rooms[row][column].numEdges += 1;
-            this.rooms[row][column - 1].numEdges += 1;
-            edgeCount += 1;
-          } else {
-            this.rooms[row][column].minusX = false;
-            this.rooms[row][column - 1].plusX = false;
-          }
-        } else if (edgeType % 4 === 1 && !this.rooms[row][column].plusX) {
-          this.rooms[row][column].plusX = true;
-          this.rooms[row][column + 1].minusX = true;
-          edgeAssigned = true;
-          if (this.isMazeValid()) {
-            this.rooms[row][column].numEdges += 1;
-            this.rooms[row][column + 1].numEdges += 1;
-            edgeCount += 1;
-          } else {
-            this.rooms[row][column].plusX = false;
-            this.rooms[row][column + 1].minusX = false;
-          }
-        } else if (edgeType % 4 === 2 && !this.rooms[row][column].minusY) {
-          this.rooms[row][column].minusY = true;
-          this.rooms[row - 1][column].plusY = true;
-          edgeAssigned = true;
-          if (this.isMazeValid()) {
-            this.rooms[row][column].numEdges += 1;
-            this.rooms[row - 1][column].numEdges += 1;
-            edgeCount += 1;
-          } else {
-            this.rooms[row][column].minusY = false;
-            this.rooms[row - 1][column].plusY = false;
-          }
-        } else if (edgeType % 4 === 3 && !this.rooms[row][column].plusY) {
-          this.rooms[row][column].plusY = true;
-          this.rooms[row + 1][column].minusY = true;
-          edgeAssigned = true;
-          if (this.isMazeValid()) {
-            this.rooms[row][column].numEdges += 1;
-            this.rooms[row + 1][column].numEdges += 1;
-            edgeCount += 1;
-          } else {
-            this.rooms[row][column].plusY = false;
-            this.rooms[row + 1][column].minusY = false;
-          }
-        }
-        edgeType += 1;
-      }
-    }
-  }
-
-  private isMazeValidHelper(row: number, column: number, explored: Array<Array<boolean>>): void {
-    if (explored[row][column]) {
-      return;
-    }
-    explored[row][column] = true;
-    const room = this.rooms[row][column];
-    if (!(room.minusX)) {
-      this.isMazeValidHelper(row, column - 1, explored);
-    }
-    if (!(room.plusX)) {
-      this.isMazeValidHelper(row, column + 1, explored);
-    }
-    if (!(room.minusY)) {
-      this.isMazeValidHelper(row - 1, column, explored);
-    }
-    if (!(room.plusY)) {
-      this.isMazeValidHelper(row + 1, column, explored);
-    }
-  }
-
-  isMazeValid(): boolean {
-    const explored = new Array(this.numRoomsHigh);
-    for (let i = 0; i < explored.length; ++i) {
-      explored[i] = new Array<boolean>(this.numRoomsWide).fill(false);
-    }
-    
-    this.isMazeValidHelper(0, 0, explored);
-
-    for (let i = 0; i < explored.length; ++i) {
-      for (let j = 0; j < explored[i].length; ++j) {
-        if (!explored[i][j]) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-}
-
 export async function startRound(startRoundRequest: StartRoundRequest): Promise<StartRoundResponse> {
   const response: StartRoundResponse = {
     success: false,
@@ -457,10 +337,7 @@ export async function startRound(startRoundRequest: StartRoundRequest): Promise<
       response.message = "Invalid game code.";
       return response;
     }
-
-    const maze: Maze = new Maze(750, 450, 75);
-    await game.sendMaze(maze);
-
+    game.startRound();
 
     response.success = true;
   } catch (error) {

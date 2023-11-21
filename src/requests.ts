@@ -1,5 +1,3 @@
-import { Tank } from "./game";
-
 export interface CreateRequest {
   gamerName: string;
   tankType: number;
@@ -15,12 +13,13 @@ export interface StartRoundRequest {
   gameCode: string;
 }
 
-export enum MessageTypes {
-  First,
-  Game
+export enum WssInMessageTypes {
+  Connection,
+  WaitingRoomTankUpdate,
+  TankUpdate
 }
 
-export interface WssMessage {
-  messageType: MessageTypes,
-  tank: Tank
+export interface WssInMessage {
+  messageType: WssInMessageTypes,
+  data: string
 }
