@@ -666,3 +666,95 @@
 {"level":"info","message":"Client connected","timestamp":"2023-11-21T04:25:43.544Z"}
 {"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T04:26:44.981Z"}
 {"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T04:26:44.981Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:25:58.607Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:27:46.220Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:29:16.743Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:32:17.902Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:44:22.535Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:44:32.885Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:48:10.998Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:48:22.159Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:49:12.003Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:49:19.343Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:49:47.072Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:50:48.891Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T21:55:53.152Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:30:30.856Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:30:31.382Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:30:48.442Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:31:07.792Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:33:17.943Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:33:17.943Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:34:18.242Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:34:18.776Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:34:25.152Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:39:34.595Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:39:34.596Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:40:44.922Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:40:45.969Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:40:53.802Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:42:31.919Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:42:31.919Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:42:36.468Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:42:37.503Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:42:43.412Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:43:25.101Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:43:25.101Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T23:45:36.874Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:46:05.404Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:46:06.436Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:46:16.843Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:47:54.116Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:47:54.116Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:51:31.364Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:51:31.901Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:51:39.942Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:53:50.494Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:53:50.494Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:53:59.480Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:54:00.522Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:54:08.583Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-21T23:57:39.283Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-21T23:57:39.283Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-21T23:58:32.352Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-21T23:58:40.378Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:58:40.907Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-21T23:58:47.893Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-22T00:04:12.530Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T00:04:33.250Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:04:34.297Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:04:41.902Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-22T00:20:51.865Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T00:20:58.896Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:20:59.929Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:21:08.142Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-22T00:21:24.420Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-22T00:21:24.420Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-22T00:22:01.361Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T00:22:21.049Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:22:22.080Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:22:31.702Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:22:41.022Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T00:22:50.022Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-22T00:25:06.787Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-22T00:25:06.787Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-22T01:37:36.110Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T01:37:48.262Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:37:48.791Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:37:55.253Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-22T01:39:12.193Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-22T01:39:12.194Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-11-22T01:39:33.703Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T01:39:41.484Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:39:42.015Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:39:52.552Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:40:05.463Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-22T01:42:12.655Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-22T01:42:12.656Z"}
+{"level":"info","message":"Server is listening on 3001","timestamp":"2023-11-22T01:42:18.580Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:42:19.103Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:42:26.962Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:42:34.432Z"}
+{"level":"info","message":"Client connected","timestamp":"2023-11-22T01:42:43.813Z"}
+{"level":"info","message":"Closing wss for port 3001","timestamp":"2023-11-22T01:46:21.647Z"}
+{"level":"info","message":"Closing server for port 3001","timestamp":"2023-11-22T01:46:21.648Z"}

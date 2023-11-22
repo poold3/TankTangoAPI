@@ -219,8 +219,61 @@ export class Game {
   }
 
   public async startRound(): Promise<void> {
-    const maze: Maze = new Maze(750, 450, 75);
+    // Create maze
+    const maze: Maze = new Maze(850, 510, 85);
+    maze.createEdges();
 
+    // Send maze to clients
+    const message: WssOutMessage = {
+      messageType: WssOutMessageTypes.Maze,
+      data: JSON.stringify(maze)
+    }
+    const jsonMessage = JSON.stringify(message);
+    this.wss.clients.forEach((client: WebSocket) => {
+      client.send(jsonMessage);
+    });
+
+    // Update tanks for round start
+    await lock.acquire(this.port.toString(), () => {
+      const tanks: Array<Tank> = Array.from(this.tanks.values());
+      tanks.forEach((tank: Tank) => {
+        // Set random starting position
+        tank.positionX = (Math.floor(Math.random() * maze.numRoomsWide) * maze.step) + (maze.step / 2);
+        tank.positionY = (Math.floor(Math.random() * maze.numRoomsHigh) * maze.step) + (maze.step / 2);
+
+        // Set random heading
+        const heading: number = Math.floor(Math.random() * 360);
+        tank.heading = heading;
+        tank.turretHeading = heading;
+
+        // Make tank alive and ultimate not active
+        tank.alive = true;
+        tank.ultimateActive = false;
+
+        // Set tank
+        this.tanks.set(tank.gamerName, tank);
+      });
+
+      // Send tanks to clients
+      const message: WssOutMessage = {
+        messageType: WssOutMessageTypes.SelectedTankUpdate,
+        data: JSON.stringify(Array.from(this.tanks.values()))
+      }
+      const jsonMessage = JSON.stringify(message);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(jsonMessage);
+      });
+    });
+
+    //Update gameState to countdown
+    const stateMessage: WssOutMessage = {
+      messageType: WssOutMessageTypes.GameStateUpdate,
+      data: JSON.stringify(GameState.Countdown)
+    }
+    const stateJsonMessage = JSON.stringify(stateMessage);
+    this.wss.clients.forEach((client: WebSocket) => {
+      client.send(stateJsonMessage);
+    });
   }
 }
 
