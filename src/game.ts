@@ -7,6 +7,7 @@ import https, { Server } from "https";
 import fs from "fs";
 import { Maze } from "./maze";
 import { Tank } from "./tank";
+import { timer } from "./timer";
 const lock = new AsyncLock();
 
 export const enum GameState {
@@ -275,6 +276,19 @@ export class Game {
       client.send(stateJsonMessage);
     });
   }
+
+  public async startRunning() {
+    await timer(3000);
+    //Update gameState to running
+    const stateMessage: WssOutMessage = {
+      messageType: WssOutMessageTypes.GameStateUpdate,
+      data: JSON.stringify(GameState.Running)
+    }
+    const stateJsonMessage = JSON.stringify(stateMessage);
+    this.wss.clients.forEach((client: WebSocket) => {
+      client.send(stateJsonMessage);
+    });
+  }
 }
 
 
@@ -391,6 +405,7 @@ export async function startRound(startRoundRequest: StartRoundRequest): Promise<
       return response;
     }
     game.startRound();
+    game.startRunning();
 
     response.success = true;
   } catch (error) {
