@@ -288,6 +288,21 @@ export class Game {
     this.wss.clients.forEach((client: WebSocket) => {
       client.send(stateJsonMessage);
     });
+
+    while (true) {
+      await timer(16);
+      await lock.acquire(this.port.toString(), () => {
+        // Send tanks to clients
+        const message: WssOutMessage = {
+          messageType: WssOutMessageTypes.TanksUpdate,
+          data: JSON.stringify(Array.from(this.tanks.values()))
+        }
+        const jsonMessage = JSON.stringify(message);
+        this.wss.clients.forEach((client: WebSocket) => {
+          client.send(jsonMessage);
+        });
+      });
+    }
   }
 }
 
