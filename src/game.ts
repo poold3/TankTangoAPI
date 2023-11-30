@@ -8,6 +8,7 @@ import fs from "fs";
 import { Maze } from "./maze";
 import { Tank } from "./tank";
 import { timer } from "./timer";
+import { Bullet } from "./bullet";
 const lock = new AsyncLock();
 
 export const enum GameState {
@@ -84,6 +85,26 @@ export class Game {
           await lock.acquire(this.port.toString(), () => {
             // Replace current tank with new tank
             this.tanks.set(tank.gamerName, tank);
+          });
+        } else if (wssMessage.messageType === WssInMessageTypes.NewBullet) {
+          const newBullet: Bullet = JSON.parse(wssMessage.data);
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.NewBullet,
+            data: JSON.stringify(newBullet)
+          }
+          const jsonMessage = JSON.stringify(message);
+          this.wss.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
+          });
+        } else if (wssMessage.messageType === WssInMessageTypes.EraseBullet) {
+          const bulletId: string = JSON.parse(wssMessage.data);
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.EraseBullet,
+            data: JSON.stringify(bulletId)
+          }
+          const jsonMessage = JSON.stringify(message);
+          this.wss.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
           });
         } else if (wssMessage.messageType === WssInMessageTypes.WaitingRoomTankUpdate) {
           tank = JSON.parse(wssMessage.data);
@@ -289,7 +310,7 @@ export class Game {
       client.send(stateJsonMessage);
     });
 
-    while (true) {
+    while (await this.getNumAlive() > 1) {
       await timer(16);
       await lock.acquire(this.port.toString(), () => {
         // Send tanks to clients
@@ -303,6 +324,35 @@ export class Game {
         });
       });
     }
+
+    await lock.acquire(this.port.toString(), () => {
+      const remainingTanks = Array.from(this.tanks.values());
+      for (let i = 0; i < remainingTanks.length; ++i) {
+        if (remainingTanks[i].alive) {
+          remainingTanks[i].score += 1;
+          this.tanks.set(remainingTanks[i].gamerName, remainingTanks[i]);
+        }
+      }
+      // Send tanks to clients
+      const message: WssOutMessage = {
+        messageType: WssOutMessageTypes.SelectedTankUpdate,
+        data: JSON.stringify(Array.from(this.tanks.values()))
+      }
+      const jsonMessage = JSON.stringify(message);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(jsonMessage);
+      });
+    });
+
+    //Update gameState to waiting
+    const endStateMessage: WssOutMessage = {
+      messageType: WssOutMessageTypes.GameStateUpdate,
+      data: JSON.stringify(GameState.Waiting)
+    }
+    const endStateJsonMessage = JSON.stringify(endStateMessage);
+    this.wss.clients.forEach((client: WebSocket) => {
+      client.send(endStateJsonMessage);
+    });
   }
 }
 
