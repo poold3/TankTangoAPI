@@ -9,6 +9,7 @@ import { Maze } from "./maze";
 import { Tank } from "./tank";
 import { timer } from "./timer";
 import { Bullet } from "./bullet";
+import { Point } from "./point";
 const lock = new AsyncLock();
 
 export const enum GameState {
@@ -242,13 +243,13 @@ export class Game {
 
   public async startRound(): Promise<void> {
     // Create maze
-    const maze: Maze = new Maze(850, 510, 85);
-    maze.createEdges();
+    this.maze = new Maze(850, 510, 85);
+    this.maze.createEdges();
 
     // Send maze to clients
     const message: WssOutMessage = {
       messageType: WssOutMessageTypes.Maze,
-      data: JSON.stringify(maze)
+      data: JSON.stringify(this.maze)
     }
     const jsonMessage = JSON.stringify(message);
     this.wss.clients.forEach((client: WebSocket) => {
@@ -258,10 +259,25 @@ export class Game {
     // Update tanks for round start
     await lock.acquire(this.port.toString(), () => {
       const tanks: Array<Tank> = Array.from(this.tanks.values());
+      const newTankPositions: Array<Point> = new Array<Point>();
       tanks.forEach((tank: Tank) => {
         // Set random starting position
-        tank.positionX = (Math.floor(Math.random() * maze.numRoomsWide) * maze.step) + (maze.step / 2);
-        tank.positionY = (Math.floor(Math.random() * maze.numRoomsHigh) * maze.step) + (maze.step / 2);
+        let positionTaken = true;
+        while (positionTaken) {
+          const newPosition: Point = new Point((Math.floor(Math.random() * this.maze.numRoomsWide) * this.maze.step) + (this.maze.step / 2), (Math.floor(Math.random() * this.maze.numRoomsHigh) * this.maze.step) + (this.maze.step / 2));
+          positionTaken = false;
+          for (let i = 0; i < newTankPositions.length; ++i) {
+            if (newTankPositions[i].x === newPosition.x && newTankPositions[i].y === newPosition.y) {
+              positionTaken = true;
+              break;
+            }
+          }
+          if (!positionTaken) {
+            newTankPositions.push(newPosition);
+            tank.positionX = newPosition.x;
+            tank.positionY = newPosition.y;
+          }
+        }
 
         // Set random heading
         const heading: number = Math.floor(Math.random() * 360);
