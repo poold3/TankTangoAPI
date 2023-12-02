@@ -84,8 +84,10 @@ export class Game {
         } else if (wssMessage.messageType === WssInMessageTypes.TankUpdate) {
           tank = JSON.parse(wssMessage.data);
           await lock.acquire(this.port.toString(), () => {
-            // Replace current tank with new tank
-            this.tanks.set(tank.gamerName, tank);
+            if (this.state === GameState.Running) {
+              // Replace current tank with new tank
+              this.tanks.set(tank.gamerName, tank);
+            }
           });
         } else if (wssMessage.messageType === WssInMessageTypes.NewBullet) {
           const newBullet: Bullet = JSON.parse(wssMessage.data);
@@ -301,31 +303,35 @@ export class Game {
       this.wss.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
-    });
 
-    //Update gameState to countdown
-    const stateMessage: WssOutMessage = {
-      messageType: WssOutMessageTypes.GameStateUpdate,
-      data: JSON.stringify(GameState.Countdown)
-    }
-    const stateJsonMessage = JSON.stringify(stateMessage);
-    this.wss.clients.forEach((client: WebSocket) => {
-      client.send(stateJsonMessage);
+      //Update gameState to countdown
+      this.state = GameState.Countdown;
+      const stateMessage: WssOutMessage = {
+        messageType: WssOutMessageTypes.GameStateUpdate,
+        data: JSON.stringify(this.state)
+      }
+      const stateJsonMessage = JSON.stringify(stateMessage);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(stateJsonMessage);
+      });
     });
   }
 
   public async startRunning() {
     await timer(3000);
-    //Update gameState to running
-    const stateMessage: WssOutMessage = {
-      messageType: WssOutMessageTypes.GameStateUpdate,
-      data: JSON.stringify(GameState.Running)
-    }
-    const stateJsonMessage = JSON.stringify(stateMessage);
-    this.wss.clients.forEach((client: WebSocket) => {
-      client.send(stateJsonMessage);
+    await lock.acquire(this.port.toString(), () => {
+      //Update gameState to running
+      this.state = GameState.Running;
+      const stateMessage: WssOutMessage = {
+        messageType: WssOutMessageTypes.GameStateUpdate,
+        data: JSON.stringify(this.state)
+      }
+      const stateJsonMessage = JSON.stringify(stateMessage);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(stateJsonMessage);
+      });
     });
-
+    
     while (await this.getNumAlive() > 1) {
       await timer(16);
       await lock.acquire(this.port.toString(), () => {
@@ -358,21 +364,20 @@ export class Game {
       this.wss.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
-    });
 
-    //Update gameState to waiting
-    const endStateMessage: WssOutMessage = {
-      messageType: WssOutMessageTypes.GameStateUpdate,
-      data: JSON.stringify(GameState.Waiting)
-    }
-    const endStateJsonMessage = JSON.stringify(endStateMessage);
-    this.wss.clients.forEach((client: WebSocket) => {
-      client.send(endStateJsonMessage);
+      //Update gameState to waiting
+      this.state = GameState.Waiting;
+      const endStateMessage: WssOutMessage = {
+        messageType: WssOutMessageTypes.GameStateUpdate,
+        data: JSON.stringify(this.state)
+      }
+      const endStateJsonMessage = JSON.stringify(endStateMessage);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(endStateJsonMessage);
+      });
     });
   }
 }
-
-
 
 const games: Map<string, Game> = new Map<string, Game>();
 const ports: Map<number, boolean> = new Map<number, boolean>();
