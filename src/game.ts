@@ -22,7 +22,7 @@ export const enum GameState {
 export class Game {
   public gameCode: string;
   public port: number;
-  public tanks: Map<string, Tank>;
+  public tanks: Array<Tank>;
   public wss: WebSocketServer;
   public state: GameState;
   public colorsAvailable: Array<boolean>;
@@ -32,7 +32,7 @@ export class Game {
   constructor(gameCode: string, port: number) {
     this.gameCode = gameCode;
     this.port = port;
-    this.tanks = new Map<string, Tank>();
+    this.tanks = new Array<Tank>();
     this.state = GameState.Waiting;
     this.colorsAvailable = new Array<boolean>(4).fill(true);
     this.maze = new Maze(0, 0, 1);
@@ -55,7 +55,7 @@ export class Game {
           tank = JSON.parse(wssMessage.data);
           await lock.acquire(this.port.toString(), () => {
             // If the first to join the game, make admin
-            if (this.tanks.size == 0) {
+            if (this.tanks.length == 0) {
               tank.gameAdmin = true;
             }
 
@@ -68,13 +68,13 @@ export class Game {
               }
             }
             // Add tank to the game
-            this.tanks.set(tank.gamerName, tank);
+            this.tanks.push(tank);
   
             // If the game is in the Waiting state, send a SelectedTanksUpdate out to the clients. This will update the waiting room
             if (this.state === GameState.Waiting) {
               const message: WssOutMessage = {
                 messageType: WssOutMessageTypes.SelectedTankUpdate,
-                data: JSON.stringify(Array.from(this.tanks.values()))
+                data: JSON.stringify(this.tanks)
               }
               const jsonMessage = JSON.stringify(message);
               this.wss.clients.forEach((client: WebSocket) => {
@@ -84,12 +84,17 @@ export class Game {
           });
         } else if (wssMessage.messageType === WssInMessageTypes.TankUpdate) {
           tank = JSON.parse(wssMessage.data);
-          await lock.acquire(this.port.toString(), () => {
-            if (this.state === GameState.Running) {
+          if (this.state === GameState.Running) {
+            await lock.acquire(this.port.toString(), () => {
               // Replace current tank with new tank
-              this.tanks.set(tank.gamerName, tank);
-            }
-          });
+              for (let i = 0; i < this.tanks.length; ++i) {
+                if (this.tanks[i].gamerName === tank.gamerName) {
+                  this.tanks[i] = tank;
+                  break;
+                }
+              }
+            });
+          }
         } else if (wssMessage.messageType === WssInMessageTypes.NewBullet) {
           const newBullet: Bullet = JSON.parse(wssMessage.data);
           const message: WssOutMessage = {
@@ -124,20 +129,24 @@ export class Game {
           tank = JSON.parse(wssMessage.data);
           await lock.acquire(this.port.toString(), () => {
             // Replace current tank with new tank
-            this.tanks.set(tank.gamerName, tank);
-
-            // If the game is in the Waiting state(It should be but just a double check), send a SelectedTanksUpdate out to the clients. This will update the waiting room
-            if (this.state === GameState.Waiting) {
-              const message: WssOutMessage = {
-                messageType: WssOutMessageTypes.SelectedTankUpdate,
-                data: JSON.stringify(Array.from(this.tanks.values()))
+            for (let i = 0; i < this.tanks.length; ++i) {
+              if (this.tanks[i].gamerName === tank.gamerName) {
+                this.tanks[i] = tank;
+                break;
               }
-              const jsonMessage = JSON.stringify(message);
-              this.wss.clients.forEach((client: WebSocket) => {
-                client.send(jsonMessage);
-              });
             }
           });
+          // If the game is in the Waiting state(It should be but just a double check), send a SelectedTanksUpdate out to the clients. This will update the waiting room
+          if (this.state === GameState.Waiting) {
+            const message: WssOutMessage = {
+              messageType: WssOutMessageTypes.SelectedTankUpdate,
+              data: JSON.stringify(this.tanks)
+            }
+            const jsonMessage = JSON.stringify(message);
+            this.wss.clients.forEach((client: WebSocket) => {
+              client.send(jsonMessage);
+            });
+          }
         }
       });
 
@@ -145,26 +154,35 @@ export class Game {
         if (tank) {
           await lock.acquire(this.port.toString(), () => {
             // Delete tank from game
-            this.tanks.delete(tank.gamerName);
+            for (let i = 0; i < this.tanks.length; ++i) {
+              if (this.tanks[i].gamerName === tank.gamerName) {
+                this.tanks.splice(i, 1);
+                break;
+              }
+            }
 
             // Make tank color available again
             this.colorsAvailable[tank.color - 1] = true;
 
-            if (this.tanks.size > 0) {
+            if (this.tanks.length > 0) {
               // Still players in the game
               // Reassign the game admin if this tank was the admin
-              if (tank.gameAdmin && this.tanks.size > 0) {
-                const remainingTanks = Array.from(this.tanks.values());
-                const firstTank = remainingTanks[0];
+              if (tank.gameAdmin && this.tanks.length > 0) {
+                const firstTank = this.tanks[0];
                 firstTank.gameAdmin = true;
-                this.tanks.set(firstTank.gamerName, firstTank);
+                for (let i = 0; i < this.tanks.length; ++i) {
+                  if (this.tanks[i].gamerName === firstTank.gamerName) {
+                    this.tanks[i] = firstTank;
+                    break;
+                  }
+                }
               }
 
               // If the game is in the waiting stage, send a selectedtanksupdate to update the waiting room
               if (this.state === GameState.Waiting) {
                 const message: WssOutMessage = {
                   messageType: WssOutMessageTypes.SelectedTankUpdate,
-                  data: JSON.stringify(Array.from(this.tanks.values()))
+                  data: JSON.stringify(this.tanks)
                 }
                 const jsonMessage = JSON.stringify(message);
                 this.wss.clients.forEach((client: WebSocket) => {
@@ -214,24 +232,16 @@ export class Game {
     })
   }
 
-  public async gamerNameAvailable(gamerName: string): Promise<boolean> {
-    let available: boolean = false;
-    await lock.acquire(this.port.toString(), () => {
-      available = !this.tanks.has(gamerName);
-    });
-    return available;
+  public gamerNameAvailable(gamerName: string): boolean {
+    for (let i = 0; i < this.tanks.length; ++i) {
+      if (this.tanks[i].gamerName === gamerName) {
+        return false;
+      }
+    }
+    return true;
   }
 
-  public async numTanks(): Promise<number> {
-    let numTanks: number = -1;
-    await lock.acquire(this.port.toString(), () => {
-      numTanks = this.tanks.size;
-    });
-    return numTanks;
-  }
-
-  public async sendMaze(maze: Maze): Promise<void> {
-    this.maze = maze;
+  public sendMaze(): void {
     const message: WssOutMessage = {
       messageType: WssOutMessageTypes.Maze,
       data: JSON.stringify(this.maze)
@@ -242,15 +252,13 @@ export class Game {
     });
   }
 
-  public async getNumAlive(): Promise<number> {
+  public getNumAlive(): number {
     let numAlive: number = 0;
-    await lock.acquire(this.port.toString(), () => { 
-      Array.from(this.tanks.values()).forEach((tank: Tank) => {
-        if (tank.alive) {
-          numAlive += 1;
-        }
-      })
-    });
+    this.tanks.forEach((tank: Tank) => {
+      if (tank.alive) {
+        numAlive += 1;
+      }
+    })
     return numAlive;
   }
 
@@ -258,22 +266,13 @@ export class Game {
     // Create maze
     this.maze = new Maze(850, 510, 85);
     this.maze.createEdges();
-
     // Send maze to clients
-    const message: WssOutMessage = {
-      messageType: WssOutMessageTypes.Maze,
-      data: JSON.stringify(this.maze)
-    }
-    const jsonMessage = JSON.stringify(message);
-    this.wss.clients.forEach((client: WebSocket) => {
-      client.send(jsonMessage);
-    });
+    this.sendMaze();
 
     // Update tanks for round start
     await lock.acquire(this.port.toString(), () => {
-      const tanks: Array<Tank> = Array.from(this.tanks.values());
       const newTankPositions: Array<Point> = new Array<Point>();
-      tanks.forEach((tank: Tank) => {
+      for (let i = 0; i < this.tanks.length; ++i) {
         // Set random starting position
         let positionTaken = true;
         while (positionTaken) {
@@ -287,28 +286,25 @@ export class Game {
           }
           if (!positionTaken) {
             newTankPositions.push(newPosition);
-            tank.positionX = newPosition.x;
-            tank.positionY = newPosition.y;
+            this.tanks[i].positionX = newPosition.x;
+            this.tanks[i].positionY = newPosition.y;
           }
         }
 
         // Set random heading
         const heading: number = Math.floor(Math.random() * 360);
-        tank.heading = heading;
-        tank.turretHeading = heading;
+        this.tanks[i].heading = heading;
+        this.tanks[i].turretHeading = heading;
 
         // Make tank alive and ultimate not active
-        tank.alive = true;
-        tank.ultimateActive = false;
-
-        // Set tank
-        this.tanks.set(tank.gamerName, tank);
-      });
+        this.tanks[i].alive = true;
+        this.tanks[i].ultimateActive = false;
+      }
 
       // Send tanks to clients
       const message: WssOutMessage = {
         messageType: WssOutMessageTypes.SelectedTankUpdate,
-        data: JSON.stringify(Array.from(this.tanks.values()))
+        data: JSON.stringify(this.tanks)
       }
       const jsonMessage = JSON.stringify(message);
       this.wss.clients.forEach((client: WebSocket) => {
@@ -343,18 +339,16 @@ export class Game {
       });
     });
     
-    while (await this.getNumAlive() > 1) {
-      await timer(16);
-      await lock.acquire(this.port.toString(), () => {
-        // Send tanks to clients
-        const message: WssOutMessage = {
-          messageType: WssOutMessageTypes.TanksUpdate,
-          data: JSON.stringify(Array.from(this.tanks.values()))
-        }
-        const jsonMessage = JSON.stringify(message);
-        this.wss.clients.forEach((client: WebSocket) => {
-          client.send(jsonMessage);
-        });
+    while (this.getNumAlive() > 1) {
+      await timer(15);
+      // Send tanks to clients
+      const message: WssOutMessage = {
+        messageType: WssOutMessageTypes.TanksUpdate,
+        data: JSON.stringify(this.tanks)
+      }
+      const jsonMessage = JSON.stringify(message);
+      this.wss.clients.forEach((client: WebSocket) => {
+        client.send(jsonMessage);
       });
     }
 
@@ -362,17 +356,15 @@ export class Game {
       //Update gameState to waiting
       this.state = GameState.Waiting;
       await timer(1000);
-      const remainingTanks = Array.from(this.tanks.values());
-      for (let i = 0; i < remainingTanks.length; ++i) {
-        if (remainingTanks[i].alive) {
-          remainingTanks[i].score += 1;
-          this.tanks.set(remainingTanks[i].gamerName, remainingTanks[i]);
+      for (let i = 0; i < this.tanks.length; ++i) {
+        if (this.tanks[i].alive) {
+          this.tanks[i].score += 1;
         }
       }
       // Send tanks to clients
       const message: WssOutMessage = {
         messageType: WssOutMessageTypes.SelectedTankUpdate,
-        data: JSON.stringify(Array.from(this.tanks.values()))
+        data: JSON.stringify(this.tanks)
       }
       const jsonMessage = JSON.stringify(message);
       this.wss.clients.forEach((client: WebSocket) => {
@@ -458,7 +450,7 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
       return response;
     }
 
-    if (!(await game.gamerNameAvailable(joinRequest.gamerName))) {
+    if (!game.gamerNameAvailable(joinRequest.gamerName)) {
       response.success = false;
       response.message = "That gamer name is already taken.";
       return response;
@@ -471,7 +463,7 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
     }
 
     const newTank: Tank = new Tank(joinRequest.gamerName, joinRequest.tankType);
-    if ((await game.numTanks()) === 4) {
+    if (game.tanks.length === 4) {
       response.success = false;
       response.message = "This game already has 4 players.";
       return response;
