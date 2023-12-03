@@ -18,7 +18,8 @@ export enum WssInMessageTypes {
   WaitingRoomTankUpdate,
   TankUpdate,
   NewBullet,
-  EraseBullet
+  EraseBullet,
+  PlayAudio
 }
 
 export interface WssInMessage {

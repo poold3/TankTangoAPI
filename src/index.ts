@@ -7,7 +7,7 @@ import { logger } from "./logger";
 
 const app: Application = express();
 app.use((request, response, next) => {
-  response.setHeader('Access-Control-Allow-Origin', 'https://127.0.0.1:4200');
+  response.setHeader('Access-Control-Allow-Origin', 'https://tanktango.click');
   response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   response.setHeader("Access-Control-Allow-Credentials", "true");
@@ -19,8 +19,8 @@ app.use(bodyParser.json());
 setRoutes(app);
 
 const sslOptions = {
-  key: fs.readFileSync("./certs/server.key"),
-  cert: fs.readFileSync("./certs/server.crt")
+  key: fs.readFileSync("./certs/privkey.pem"),
+  cert: fs.readFileSync("./certs/fullchain.pem")
 }
 
 const port: number = 3000;

@@ -10,6 +10,7 @@ import { Tank } from "./tank";
 import { timer } from "./timer";
 import { Bullet } from "./bullet";
 import { Point } from "./point";
+import { AudioType } from "./audio";
 const lock = new AsyncLock();
 
 export const enum GameState {
@@ -104,6 +105,16 @@ export class Game {
           const message: WssOutMessage = {
             messageType: WssOutMessageTypes.EraseBullet,
             data: JSON.stringify(bulletId)
+          }
+          const jsonMessage = JSON.stringify(message);
+          this.wss.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
+          });
+        } else if (wssMessage.messageType === WssInMessageTypes.PlayAudio) {
+          const audioType: AudioType = JSON.parse(wssMessage.data);
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.PlayAudio,
+            data: JSON.stringify(audioType)
           }
           const jsonMessage = JSON.stringify(message);
           this.wss.clients.forEach((client: WebSocket) => {
@@ -347,7 +358,10 @@ export class Game {
       });
     }
 
-    await lock.acquire(this.port.toString(), () => {
+    await lock.acquire(this.port.toString(), async (): Promise<void> => {
+      //Update gameState to waiting
+      this.state = GameState.Waiting;
+      await timer(1000);
       const remainingTanks = Array.from(this.tanks.values());
       for (let i = 0; i < remainingTanks.length; ++i) {
         if (remainingTanks[i].alive) {
@@ -365,8 +379,7 @@ export class Game {
         client.send(jsonMessage);
       });
 
-      //Update gameState to waiting
-      this.state = GameState.Waiting;
+      // Send game state
       const endStateMessage: WssOutMessage = {
         messageType: WssOutMessageTypes.GameStateUpdate,
         data: JSON.stringify(this.state)
