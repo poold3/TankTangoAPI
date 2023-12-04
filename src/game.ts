@@ -340,7 +340,7 @@ export class Game {
     });
     
     while (this.getNumAlive() > 1) {
-      await timer(15);
+      await timer(16);
       // Send tanks to clients
       const message: WssOutMessage = {
         messageType: WssOutMessageTypes.TanksUpdate,
