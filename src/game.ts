@@ -325,7 +325,7 @@ export class Game {
   }
 
   public async startRunning() {
-    await timer(3000);
+    await timer(1900);
     await lock.acquire(this.port.toString(), () => {
       //Update gameState to running
       this.state = GameState.Running;
