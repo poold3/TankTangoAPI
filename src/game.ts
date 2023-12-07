@@ -1,95 +1,74 @@
 import { CreateRequest, JoinRequest, StartRoundRequest, WssInMessage, WssInMessageTypes } from "./requests";
 import { CreateResponse, JoinResponse, StartRoundResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
-import { WebSocketServer, WebSocket } from "ws";
+import { Server, WebSocket } from "ws";
 import AsyncLock from "async-lock";
 import { logger } from "./logger";
-import https, { Server } from "https";
-import fs from "fs";
 import { Maze } from "./maze";
 import { Tank } from "./tank";
 import { timer } from "./timer";
 import { Bullet } from "./bullet";
 import { Point } from "./point";
 import { AudioType } from "./audio";
+import { IncomingMessage } from "http";
 const lock = new AsyncLock();
 
-export const enum GameState {
-  Waiting,
-  Countdown,
-  Running
-}
+export const PORT_NUMBER = 3000;
+export const MAX_NUM_GAMES = 20;
 
-export class Game {
-  public gameCode: string;
-  public port: number;
-  public tanks: Array<Tank>;
-  public wss: WebSocketServer;
-  public state: GameState;
-  public colorsAvailable: Array<boolean>;
-  public runningInterval: number = 0;
-  public maze: Maze;
+const games: Map<string, Game> = new Map<string, Game>();
 
-  constructor(gameCode: string, port: number) {
-    this.gameCode = gameCode;
-    this.port = port;
-    this.tanks = new Array<Tank>();
-    this.state = GameState.Waiting;
-    this.colorsAvailable = new Array<boolean>(4).fill(true);
-    this.maze = new Maze(0, 0, 1);
-
-    const serverOptions = {
-      key: fs.readFileSync("./certs/server.key"),
-      cert: fs.readFileSync("./certs/server.crt")
-    }
-
-    const server = https.createServer(serverOptions);
-    this.wss = new WebSocket.Server({ server });
-
-    this.wss.on("connection", (ws: WebSocket) => {
-      logger.info("Client connected");
-
+export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMessage>) {
+  wss.on("connection", async (ws: WebSocket, request: Request) => {
+    const gameCode: string = request.url.split("/")[1];
+    const game = games.get(gameCode);
+  
+    if (game) {
+      // Add client to the game
+      //logger.info("Client connected to game: " + gameCode);
+      game.addClient(ws);
+  
       let tank: Tank;
       ws.on("message", async (message: string) => {
         const wssMessage: WssInMessage = JSON.parse(message);
         if (wssMessage.messageType === WssInMessageTypes.Connection) {
           tank = JSON.parse(wssMessage.data);
-          await lock.acquire(this.port.toString(), () => {
+          await lock.acquire(gameCode, () => {
             // If the first to join the game, make admin
-            if (this.tanks.length == 0) {
+            if (game.tanks.length === 0) {
               tank.gameAdmin = true;
             }
-
+  
             // Assign a color to the new tank
             for (let i = 0; i < 4; ++i) {
-              if (this.colorsAvailable[i]) {
+              if (game.colorsAvailable[i]) {
                 tank.color = i + 1;
-                this.colorsAvailable[i] = false;
+                game.colorsAvailable[i] = false;
                 break;
               }
             }
             // Add tank to the game
-            this.tanks.push(tank);
+            game.tanks.push(tank);
   
             // If the game is in the Waiting state, send a SelectedTanksUpdate out to the clients. This will update the waiting room
-            if (this.state === GameState.Waiting) {
+            if (game.state === GameState.Waiting) {
               const message: WssOutMessage = {
                 messageType: WssOutMessageTypes.SelectedTankUpdate,
-                data: JSON.stringify(this.tanks)
+                data: JSON.stringify(game.tanks)
               }
               const jsonMessage = JSON.stringify(message);
-              this.wss.clients.forEach((client: WebSocket) => {
+              game.clients.forEach((client: WebSocket) => {
                 client.send(jsonMessage);
               });
             }
           });
         } else if (wssMessage.messageType === WssInMessageTypes.TankUpdate) {
           tank = JSON.parse(wssMessage.data);
-          if (this.state === GameState.Running) {
-            await lock.acquire(this.port.toString(), () => {
+          if (game.state === GameState.Running) {
+            await lock.acquire(gameCode, () => {
               // Replace current tank with new tank
-              for (let i = 0; i < this.tanks.length; ++i) {
-                if (this.tanks[i].gamerName === tank.gamerName) {
-                  this.tanks[i] = tank;
+              for (let i = 0; i < game.tanks.length; ++i) {
+                if (game.tanks[i].gamerName === tank.gamerName) {
+                  game.tanks[i] = tank;
                   break;
                 }
               }
@@ -102,7 +81,7 @@ export class Game {
             data: JSON.stringify(newBullet)
           }
           const jsonMessage = JSON.stringify(message);
-          this.wss.clients.forEach((client: WebSocket) => {
+          game.clients.forEach((client: WebSocket) => {
             client.send(jsonMessage);
           });
         } else if (wssMessage.messageType === WssInMessageTypes.EraseBullet) {
@@ -112,7 +91,7 @@ export class Game {
             data: JSON.stringify(bulletId)
           }
           const jsonMessage = JSON.stringify(message);
-          this.wss.clients.forEach((client: WebSocket) => {
+          game.clients.forEach((client: WebSocket) => {
             client.send(jsonMessage);
           });
         } else if (wssMessage.messageType === WssInMessageTypes.PlayAudio) {
@@ -122,114 +101,143 @@ export class Game {
             data: JSON.stringify(audioType)
           }
           const jsonMessage = JSON.stringify(message);
-          this.wss.clients.forEach((client: WebSocket) => {
+          game.clients.forEach((client: WebSocket) => {
             client.send(jsonMessage);
           });
         } else if (wssMessage.messageType === WssInMessageTypes.WaitingRoomTankUpdate) {
           tank = JSON.parse(wssMessage.data);
-          await lock.acquire(this.port.toString(), () => {
+          await lock.acquire(gameCode, () => {
             // Replace current tank with new tank
-            for (let i = 0; i < this.tanks.length; ++i) {
-              if (this.tanks[i].gamerName === tank.gamerName) {
-                this.tanks[i] = tank;
+            for (let i = 0; i < game.tanks.length; ++i) {
+              if (game.tanks[i].gamerName === tank.gamerName) {
+                game.tanks[i] = tank;
                 break;
               }
             }
           });
           // If the game is in the Waiting state(It should be but just a double check), send a SelectedTanksUpdate out to the clients. This will update the waiting room
-          if (this.state === GameState.Waiting) {
+          if (game.state === GameState.Waiting) {
             const message: WssOutMessage = {
               messageType: WssOutMessageTypes.SelectedTankUpdate,
-              data: JSON.stringify(this.tanks)
+              data: JSON.stringify(game.tanks)
             }
             const jsonMessage = JSON.stringify(message);
-            this.wss.clients.forEach((client: WebSocket) => {
+            game.clients.forEach((client: WebSocket) => {
               client.send(jsonMessage);
             });
           }
         }
       });
-
+  
       ws.on("close", async () => {
+        game.deleteClient(ws);
         if (tank) {
-          await lock.acquire(this.port.toString(), () => {
+          await lock.acquire(gameCode, () => {
             // Delete tank from game
-            for (let i = 0; i < this.tanks.length; ++i) {
-              if (this.tanks[i].gamerName === tank.gamerName) {
-                this.tanks.splice(i, 1);
+            for (let i = 0; i < game.tanks.length; ++i) {
+              if (game.tanks[i].gamerName === tank.gamerName) {
+                game.tanks.splice(i, 1);
                 break;
               }
             }
-
+  
             // Make tank color available again
-            this.colorsAvailable[tank.color - 1] = true;
-
-            if (this.tanks.length > 0) {
+            game.colorsAvailable[tank.color - 1] = true;
+  
+            if (game.tanks.length > 0) {
               // Still players in the game
               // Reassign the game admin if this tank was the admin
-              if (tank.gameAdmin && this.tanks.length > 0) {
-                const firstTank = this.tanks[0];
-                firstTank.gameAdmin = true;
-                for (let i = 0; i < this.tanks.length; ++i) {
-                  if (this.tanks[i].gamerName === firstTank.gamerName) {
-                    this.tanks[i] = firstTank;
-                    break;
-                  }
-                }
+              if (tank.gameAdmin) {
+                game.tanks[0].gameAdmin = true;
               }
-
+  
               // If the game is in the waiting stage, send a selectedtanksupdate to update the waiting room
-              if (this.state === GameState.Waiting) {
+              if (game.state === GameState.Waiting) {
                 const message: WssOutMessage = {
                   messageType: WssOutMessageTypes.SelectedTankUpdate,
-                  data: JSON.stringify(this.tanks)
+                  data: JSON.stringify(game.tanks)
                 }
                 const jsonMessage = JSON.stringify(message);
-                this.wss.clients.forEach((client: WebSocket) => {
+                game.clients.forEach((client: WebSocket) => {
                   client.send(jsonMessage);
                 });
               }
             } else {
               // No more tanks in the game. Shut down the servers and reset the game structures
-              this.wss.close(() => {
-                logger.info("Closing wss for port " + this.port.toString());
-              });
-              server.close(() => {
-                logger.info("Closing server for port " + this.port.toString());
-              });
-              endGame(this.gameCode);
+              endGame(gameCode);
             }
           });
         }
       });
-    });
-
-    this.wss.on("error", (error: Error) => {
-      logger.error(error);
+  
+    } else {
+      logger.error("INVALID GAME CODE: " + gameCode);
       // Try to send error message to clients
-      const message: WssOutMessage = {
+      const errorMessage: WssOutMessage = {
         messageType: WssOutMessageTypes.Error,
-        data: JSON.stringify(error.message)
+        data: JSON.stringify("INVALID GAME CODE: " + gameCode)
       }
-      const jsonMessage = JSON.stringify(message);
-      this.wss.clients.forEach((client: WebSocket) => {
-        client.send(jsonMessage);
-      });
-
-      // Shut down the servers and reset the game structures
-      this.wss.close(() => {
-        logger.info("Closing wss for port " + this.port.toString());
-      });
-      server.close(() => {
-        logger.info("Closing server for port " + this.port.toString());
-      });
-      endGame(this.gameCode);
+      const jsonErrorMessage = JSON.stringify(errorMessage);
+      ws.send(jsonErrorMessage);
+      ws.terminate();
+    }
+  });
+  
+  wss.on("error", (error: Error) => {
+    logger.error(error);
+    // Try to send error message to clients
+    const message: WssOutMessage = {
+      messageType: WssOutMessageTypes.Error,
+      data: JSON.stringify(error.message)
+    }
+    const jsonMessage = JSON.stringify(message);
+    wss.clients.forEach((client: WebSocket) => {
+      client.send(jsonMessage);
     });
-
-    // Start up websocket server!
-    server.listen(this.port, ()=> {
-      logger.info("Server is listening on " + this.port.toString());
+  
+    // Shut down the servers and reset the game structures
+    Array.from(games.values()).forEach((game: Game) => {
+      endGame(game.gameCode);
     })
+  });
+}
+
+export const enum GameState {
+  Waiting,
+  Countdown,
+  Running
+}
+
+export class Game {
+  public gameCode: string;
+  public clients: Set<WebSocket>;
+  public tanks: Array<Tank>;
+  public state: GameState;
+  public colorsAvailable: Array<boolean>;
+  public runningInterval: number = 0;
+  public maze: Maze;
+
+  constructor(gameCode: string) {
+    this.gameCode = gameCode;
+    this.clients = new Set<WebSocket>();
+    this.tanks = new Array<Tank>();
+    this.state = GameState.Waiting;
+    this.colorsAvailable = new Array<boolean>(4).fill(true);
+    this.maze = new Maze(0, 0, 1);
+  }
+
+  public async addClient(ws: WebSocket) {
+    await lock.acquire(this.gameCode, () => {
+      this.clients.add(ws);
+    });
+  }
+
+  public async deleteClient(ws: WebSocket): Promise<boolean> {
+    let removed = false;
+    await lock.acquire(this.gameCode, () => {
+      removed = this.clients.delete(ws);
+    });
+    return removed;
   }
 
   public gamerNameAvailable(gamerName: string): boolean {
@@ -247,7 +255,7 @@ export class Game {
       data: JSON.stringify(this.maze)
     }
     const jsonMessage = JSON.stringify(message);
-    this.wss.clients.forEach((client: WebSocket) => {
+    this.clients.forEach((client: WebSocket) => {
       client.send(jsonMessage);
     });
   }
@@ -262,7 +270,7 @@ export class Game {
     return numAlive;
   }
 
-  public async startRound(): Promise<void> {
+  public async startRound() {
     // Create maze
     this.maze = new Maze(850, 510, 85);
     this.maze.createEdges();
@@ -270,7 +278,7 @@ export class Game {
     this.sendMaze();
 
     // Update tanks for round start
-    await lock.acquire(this.port.toString(), () => {
+    await lock.acquire(this.gameCode, () => {
       const newTankPositions: Array<Point> = new Array<Point>();
       for (let i = 0; i < this.tanks.length; ++i) {
         // Set random starting position
@@ -307,7 +315,7 @@ export class Game {
         data: JSON.stringify(this.tanks)
       }
       const jsonMessage = JSON.stringify(message);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
 
@@ -318,7 +326,7 @@ export class Game {
         data: JSON.stringify(this.state)
       }
       const stateJsonMessage = JSON.stringify(stateMessage);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(stateJsonMessage);
       });
     });
@@ -326,7 +334,7 @@ export class Game {
 
   public async startRunning() {
     await timer(1900);
-    await lock.acquire(this.port.toString(), () => {
+    await lock.acquire(this.gameCode, () => {
       //Update gameState to running
       this.state = GameState.Running;
       const stateMessage: WssOutMessage = {
@@ -334,7 +342,7 @@ export class Game {
         data: JSON.stringify(this.state)
       }
       const stateJsonMessage = JSON.stringify(stateMessage);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(stateJsonMessage);
       });
     });
@@ -347,12 +355,12 @@ export class Game {
         data: JSON.stringify(this.tanks)
       }
       const jsonMessage = JSON.stringify(message);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
     }
 
-    await lock.acquire(this.port.toString(), async (): Promise<void> => {
+    await lock.acquire(this.gameCode, async (): Promise<void> => {
       //Update gameState to waiting
       this.state = GameState.Waiting;
       await timer(1000);
@@ -367,7 +375,7 @@ export class Game {
         data: JSON.stringify(this.tanks)
       }
       const jsonMessage = JSON.stringify(message);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
 
@@ -377,21 +385,10 @@ export class Game {
         data: JSON.stringify(this.state)
       }
       const endStateJsonMessage = JSON.stringify(endStateMessage);
-      this.wss.clients.forEach((client: WebSocket) => {
+      this.clients.forEach((client: WebSocket) => {
         client.send(endStateJsonMessage);
       });
     });
-  }
-}
-
-const games: Map<string, Game> = new Map<string, Game>();
-const ports: Map<number, boolean> = new Map<number, boolean>();
-initializePorts();
-
-function initializePorts(): void {
-  // Set all ports as not being used.
-  for (let i = 3001; i <= 3020; ++i) {
-    ports.set(i, false);
   }
 }
 
@@ -399,36 +396,34 @@ export async function createNewGame(createRequest: CreateRequest): Promise<Creat
   const response: CreateResponse = {
     success: false,
     message: "",
-    gameCode: "",
-    port: -1
+    gameCode: ""
   };
 
   try {
     const gameCode: string = await generateNewGameCode();
-    const port: number = await getPortNumber();
     
-    if (port === -1) {
+    if (games.size >= MAX_NUM_GAMES) {
       response.success = false;
       response.message = "Tank Tango is currently at max capacity. Please try again later.";
       return response;
     }
-  
-    const newGame = new Game(gameCode, port);
+
+    const newGame = new Game(gameCode);
   
     await lock.acquire("games", () => {
       games.set(gameCode, newGame);
     });
+
+    logger.info("Created new game: " + gameCode);
   
     response.success = true;
     response.gameCode = gameCode;
-    response.port = port;
     
   } catch (error) {
     logger.error(error);
     response.success = false;
     response.message = "An error occurred while creating your game. Please try again later.";
     response.gameCode = "";
-    response.port = -1;
   }
   return response;
 }
@@ -436,8 +431,7 @@ export async function createNewGame(createRequest: CreateRequest): Promise<Creat
 export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> {
   const response: JoinResponse = {
     success: false,
-    message: "",
-    port: -1
+    message: ""
   }
   try {
     let game: Game | undefined;
@@ -458,11 +452,10 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
 
     if (game.state == GameState.Running) {
       response.success = false;
-      response.message = "Their is currently a round in progress. Please join again between rounds.";
+      response.message = "There is currently a round in progress. Please join again between rounds.";
       return response;
     }
 
-    const newTank: Tank = new Tank(joinRequest.gamerName, joinRequest.tankType);
     if (game.tanks.length === 4) {
       response.success = false;
       response.message = "This game already has 4 players.";
@@ -470,12 +463,10 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
     }
 
     response.success = true;
-    response.port = game.port;
   } catch (error) {
     logger.error(error);
     response.success = false;
     response.message = "An error occurred while joining your game. Please try again later.";
-    response.port = -1;
   }
   return response;
 }
@@ -520,34 +511,13 @@ async function generateNewGameCode(): Promise<string> {
   return gameCode;
 }
 
-async function getPortNumber(): Promise<number> {
-  let port: number = -1;
-  await lock.acquire("ports", () => {
-    for (let i = 3001; i <= 3020; ++i) {
-      if (!ports.get(i)) {
-        ports.set(i, true);
-        port = i;
-        break;
-      }
-    }
-  })
-  return port;
-}
-
 async function endGame(gameCode: string): Promise<void> {
+  logger.info("Ending game: " + gameCode);
   let game: Game | undefined;
-  let port: number = -1;
   await lock.acquire("games", () => {
     game = games.get(gameCode);
     if (game) {
-      port = game.port;
       games.delete(gameCode);
     }
   });
-
-  if (port !== -1) {
-    await lock.acquire("ports", () => {
-      ports.set(port, false);
-    });
-  }
 }
