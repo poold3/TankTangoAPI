@@ -2016,3 +2016,97 @@
 {"level":"info","message":"Created new game: 842312","timestamp":"2023-12-19T08:03:47.715Z"}
 {"level":"info","message":"Ending game: 842312","timestamp":"2023-12-19T08:04:46.405Z"}
 {"level":"info","message":"Created new game: 323383","timestamp":"2023-12-19T08:06:03.081Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T08:10:25.921Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T19:29:06.146Z"}
+{"level":"info","message":"Created new game: 688931","timestamp":"2023-12-19T19:41:13.369Z"}
+{"level":"info","message":"Ending game: 688931","timestamp":"2023-12-19T19:41:54.186Z"}
+{"level":"info","message":"Created new game: 910125","timestamp":"2023-12-19T19:41:57.306Z"}
+{"level":"info","message":"Ending game: 910125","timestamp":"2023-12-19T19:42:14.784Z"}
+{"level":"info","message":"Created new game: 675796","timestamp":"2023-12-19T19:43:13.451Z"}
+{"level":"info","message":"Ending game: 675796","timestamp":"2023-12-19T19:45:23.852Z"}
+{"level":"info","message":"Created new game: 845473","timestamp":"2023-12-19T19:47:38.027Z"}
+{"level":"info","message":"Ending game: 845473","timestamp":"2023-12-19T19:48:04.628Z"}
+{"level":"info","message":"Created new game: 193884","timestamp":"2023-12-19T19:50:49.286Z"}
+{"level":"info","message":"Ending game: 193884","timestamp":"2023-12-19T19:51:13.841Z"}
+{"level":"info","message":"Created new game: 306570","timestamp":"2023-12-19T19:55:31.459Z"}
+{"level":"info","message":"Ending game: 306570","timestamp":"2023-12-19T20:09:23.691Z"}
+{"level":"info","message":"Created new game: 378875","timestamp":"2023-12-19T20:09:58.659Z"}
+{"level":"info","message":"Ending game: 378875","timestamp":"2023-12-19T20:10:25.737Z"}
+{"level":"info","message":"Created new game: 906110","timestamp":"2023-12-19T20:21:58.743Z"}
+{"level":"info","message":"Ending game: 906110","timestamp":"2023-12-19T20:23:31.532Z"}
+{"level":"info","message":"Created new game: 929961","timestamp":"2023-12-19T20:23:36.144Z"}
+{"level":"info","message":"Ending game: 929961","timestamp":"2023-12-19T20:23:50.200Z"}
+{"level":"info","message":"Created new game: 464587","timestamp":"2023-12-19T20:23:58.714Z"}
+{"level":"info","message":"Ending game: 464587","timestamp":"2023-12-19T20:25:11.662Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T20:41:34.491Z"}
+{"level":"info","message":"Created new game: 716689","timestamp":"2023-12-19T20:43:26.189Z"}
+{"level":"info","message":"Ending game: 716689","timestamp":"2023-12-19T20:43:51.813Z"}
+{"level":"info","message":"Created new game: 382714","timestamp":"2023-12-19T20:44:02.066Z"}
+{"level":"info","message":"Ending game: 382714","timestamp":"2023-12-19T20:45:04.055Z"}
+{"level":"info","message":"Created new game: 108802","timestamp":"2023-12-19T20:45:18.438Z"}
+{"level":"info","message":"Ending game: 108802","timestamp":"2023-12-19T20:45:35.993Z"}
+{"level":"info","message":"Created new game: 984576","timestamp":"2023-12-19T20:45:39.947Z"}
+{"level":"info","message":"Ending game: 984576","timestamp":"2023-12-19T20:48:06.285Z"}
+{"level":"info","message":"Created new game: 720761","timestamp":"2023-12-19T20:58:47.338Z"}
+{"level":"info","message":"Ending game: 720761","timestamp":"2023-12-19T20:59:48.387Z"}
+{"level":"info","message":"Created new game: 790149","timestamp":"2023-12-19T20:59:50.723Z"}
+{"level":"info","message":"Ending game: 790149","timestamp":"2023-12-19T21:00:25.556Z"}
+{"level":"info","message":"Created new game: 856243","timestamp":"2023-12-19T21:00:28.244Z"}
+{"level":"info","message":"Ending game: 856243","timestamp":"2023-12-19T21:00:37.914Z"}
+{"level":"info","message":"Created new game: 336454","timestamp":"2023-12-19T21:00:40.173Z"}
+{"level":"info","message":"Ending game: 336454","timestamp":"2023-12-19T21:01:06.872Z"}
+{"level":"info","message":"Created new game: 990099","timestamp":"2023-12-19T21:01:09.267Z"}
+{"level":"info","message":"Ending game: 990099","timestamp":"2023-12-19T21:02:33.993Z"}
+{"level":"info","message":"Created new game: 660331","timestamp":"2023-12-19T21:02:37.140Z"}
+{"level":"info","message":"Ending game: 660331","timestamp":"2023-12-19T21:05:34.178Z"}
+{"level":"info","message":"Created new game: 331931","timestamp":"2023-12-19T21:05:37.391Z"}
+{"level":"info","message":"Ending game: 331931","timestamp":"2023-12-19T21:05:50.046Z"}
+{"level":"info","message":"Created new game: 479807","timestamp":"2023-12-19T21:05:53.091Z"}
+{"level":"info","message":"Ending game: 479807","timestamp":"2023-12-19T21:06:20.120Z"}
+{"level":"info","message":"Created new game: 798501","timestamp":"2023-12-19T21:06:23.652Z"}
+{"level":"info","message":"Ending game: 798501","timestamp":"2023-12-19T21:06:52.297Z"}
+{"level":"info","message":"Created new game: 295231","timestamp":"2023-12-19T21:06:54.335Z"}
+{"level":"info","message":"Ending game: 295231","timestamp":"2023-12-19T21:07:10.782Z"}
+{"level":"info","message":"Created new game: 839902","timestamp":"2023-12-19T21:07:13.045Z"}
+{"level":"info","message":"Ending game: 839902","timestamp":"2023-12-19T21:07:35.602Z"}
+{"level":"info","message":"Created new game: 420198","timestamp":"2023-12-19T21:07:38.856Z"}
+{"level":"info","message":"Ending game: 420198","timestamp":"2023-12-19T21:13:05.435Z"}
+{"level":"info","message":"Created new game: 538195","timestamp":"2023-12-19T21:13:51.799Z"}
+{"level":"info","message":"Ending game: 538195","timestamp":"2023-12-19T21:16:48.518Z"}
+{"level":"info","message":"Created new game: 910900","timestamp":"2023-12-19T21:17:12.207Z"}
+{"level":"info","message":"Ending game: 910900","timestamp":"2023-12-19T21:17:41.896Z"}
+{"level":"info","message":"Created new game: 344079","timestamp":"2023-12-19T21:17:44.292Z"}
+{"level":"info","message":"Ending game: 344079","timestamp":"2023-12-19T21:21:08.674Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T21:28:32.423Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T21:28:38.150Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T21:42:03.127Z"}
+{"level":"info","message":"Created new game: 156590","timestamp":"2023-12-19T21:42:17.955Z"}
+{"level":"info","message":"Ending game: 156590","timestamp":"2023-12-19T21:44:46.956Z"}
+{"level":"info","message":"Created new game: 154044","timestamp":"2023-12-19T21:44:49.901Z"}
+{"level":"info","message":"Ending game: 154044","timestamp":"2023-12-19T21:47:31.169Z"}
+{"level":"info","message":"Created new game: 297031","timestamp":"2023-12-19T21:47:33.603Z"}
+{"level":"info","message":"Ending game: 297031","timestamp":"2023-12-19T21:48:01.689Z"}
+{"level":"info","message":"Created new game: 778490","timestamp":"2023-12-19T21:48:04.165Z"}
+{"level":"info","message":"Ending game: 778490","timestamp":"2023-12-19T21:48:16.856Z"}
+{"level":"info","message":"Created new game: 785944","timestamp":"2023-12-19T21:48:19.104Z"}
+{"level":"info","message":"Ending game: 785944","timestamp":"2023-12-19T21:55:31.448Z"}
+{"level":"info","message":"Created new game: 400328","timestamp":"2023-12-19T21:59:52.377Z"}
+{"level":"info","message":"Ending game: 400328","timestamp":"2023-12-19T22:02:07.470Z"}
+{"level":"info","message":"Created new game: 167595","timestamp":"2023-12-19T22:02:10.258Z"}
+{"level":"info","message":"Ending game: 167595","timestamp":"2023-12-19T22:03:28.007Z"}
+{"level":"info","message":"Created new game: 115973","timestamp":"2023-12-19T22:06:59.534Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-19T23:18:32.146Z"}
+{"level":"info","message":"Created new game: 609851","timestamp":"2023-12-19T23:18:47.119Z"}
+{"level":"info","message":"Ending game: 609851","timestamp":"2023-12-19T23:21:10.870Z"}
+{"level":"info","message":"Created new game: 916021","timestamp":"2023-12-19T23:21:13.984Z"}
+{"level":"info","message":"Ending game: 916021","timestamp":"2023-12-19T23:24:37.621Z"}
+{"level":"info","message":"Created new game: 417263","timestamp":"2023-12-19T23:24:40.843Z"}
+{"level":"info","message":"Ending game: 417263","timestamp":"2023-12-19T23:27:03.309Z"}
+{"level":"info","message":"Created new game: 398938","timestamp":"2023-12-19T23:27:17.504Z"}
+{"level":"info","message":"Ending game: 398938","timestamp":"2023-12-19T23:32:16.363Z"}
+{"level":"info","message":"Created new game: 676634","timestamp":"2023-12-19T23:32:18.981Z"}
+{"level":"info","message":"Ending game: 676634","timestamp":"2023-12-19T23:33:17.949Z"}
+{"level":"info","message":"Created new game: 839787","timestamp":"2023-12-19T23:33:26.114Z"}
+{"level":"info","message":"Ending game: 839787","timestamp":"2023-12-19T23:34:26.518Z"}
+{"level":"info","message":"Created new game: 665355","timestamp":"2023-12-19T23:34:29.393Z"}
+{"level":"info","message":"Ending game: 665355","timestamp":"2023-12-19T23:35:49.539Z"}

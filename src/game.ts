@@ -124,6 +124,15 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
               client.send(jsonMessage);
             });
           }
+        } else if (wssMessage.messageType === WssInMessageTypes.NewChatMessage) {
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.NewChatMessage,
+            data: wssMessage.data
+          }
+          const jsonMessage = JSON.stringify(message);
+          game.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
+          });
         }
       });
   
