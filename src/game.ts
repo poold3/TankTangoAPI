@@ -1,15 +1,16 @@
 import { CreateRequest, JoinRequest, StartRoundRequest, WssInMessage, WssInMessageTypes } from "./requests";
-import { CreateResponse, JoinResponse, StartRoundResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
+import { CreateResponse, GameUpdateData, JoinResponse, StartRoundResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
 import { Server, WebSocket } from "ws";
 import AsyncLock from "async-lock";
 import { logger } from "./logger";
-import { Maze } from "./maze";
-import { Tank } from "./tank";
+import { Maze, Room } from "./maze";
+import { AssaultTank, DemolitionTank, ScoutTank, Tank, TankInfo, TankTank } from "./tank";
 import { timer } from "./timer";
-import { Bullet } from "./bullet";
-import { Point } from "./point";
+import { Bullet, BulletInfo } from "./bullet";
+import { Point, rotatePoint } from "./point";
 import { AudioType } from "./audio";
 import { IncomingMessage } from "http";
+import { Line } from "./line";
 const lock = new AsyncLock();
 
 export const PORT_NUMBER = 3000;
@@ -65,10 +66,14 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
           tank = JSON.parse(wssMessage.data);
           if (game.state === GameState.Running) {
             await lock.acquire(gameCode, () => {
-              // Replace current tank with new tank
+              // Replace current tank data with new tank data
               for (let i = 0; i < game.tanks.length; ++i) {
                 if (game.tanks[i].gamerName === tank.gamerName) {
-                  game.tanks[i] = tank;
+                  game.tanks[i].ultimateActive = tank.ultimateActive;
+                  game.tanks[i].positionX = tank.positionX;
+                  game.tanks[i].positionY = tank.positionY;
+                  game.tanks[i].heading = tank.heading;
+                  game.tanks[i].turretHeading = tank.turretHeading;
                   break;
                 }
               }
@@ -76,19 +81,12 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
           }
         } else if (wssMessage.messageType === WssInMessageTypes.NewBullet) {
           const newBullet: Bullet = JSON.parse(wssMessage.data);
-          const message: WssOutMessage = {
-            messageType: WssOutMessageTypes.NewBullet,
-            data: JSON.stringify(newBullet)
-          }
-          const jsonMessage = JSON.stringify(message);
-          game.clients.forEach((client: WebSocket) => {
-            client.send(jsonMessage);
+          await lock.acquire("bullets" + game.gameCode, () => {
+            game.bullets.push(new Bullet(newBullet.id, newBullet.positionX, newBullet.positionY, newBullet.heading, newBullet.demolition));
           });
-        } else if (wssMessage.messageType === WssInMessageTypes.EraseBullet) {
-          const bulletId: string = JSON.parse(wssMessage.data);
           const message: WssOutMessage = {
-            messageType: WssOutMessageTypes.EraseBullet,
-            data: JSON.stringify(bulletId)
+            messageType: WssOutMessageTypes.PlayAudio,
+            data: JSON.stringify(AudioType.Click)
           }
           const jsonMessage = JSON.stringify(message);
           game.clients.forEach((client: WebSocket) => {
@@ -212,6 +210,7 @@ export class Game {
   public gameCode: string;
   public clients: Set<WebSocket>;
   public tanks: Array<Tank>;
+  public bullets: Array<Bullet>;
   public state: GameState;
   public colorsAvailable: Array<boolean>;
   public runningInterval: number = 0;
@@ -221,6 +220,7 @@ export class Game {
     this.gameCode = gameCode;
     this.clients = new Set<WebSocket>();
     this.tanks = new Array<Tank>();
+    this.bullets = new Array<Bullet>();
     this.state = GameState.Waiting;
     this.colorsAvailable = new Array<boolean>(4).fill(true);
     this.maze = new Maze(0, 0, 1);
@@ -271,6 +271,9 @@ export class Game {
   }
 
   public async startRound() {
+    // Empty bullets
+    this.bullets.length = 0;
+    
     // Create maze
     this.maze = new Maze(850, 510, 85);
     this.maze.createEdges();
@@ -281,6 +284,8 @@ export class Game {
     await lock.acquire(this.gameCode, () => {
       const newTankPositions: Array<Point> = new Array<Point>();
       for (let i = 0; i < this.tanks.length; ++i) {
+        const tankReference: TankInfo = this.getTankReference(this.tanks[i].type);
+
         // Set random starting position
         let positionTaken = true;
         while (positionTaken) {
@@ -307,6 +312,9 @@ export class Game {
         // Make tank alive and ultimate not active
         this.tanks[i].alive = true;
         this.tanks[i].ultimateActive = false;
+
+        // Set tank health
+        this.tanks[i].health = tankReference.health;
       }
 
       // Send tanks to clients
@@ -349,10 +357,17 @@ export class Game {
     
     while (this.getNumAlive() > 1) {
       await timer(16);
-      // Send tanks to clients
+      // Move and bounce bullets
+      this.updateBullets();
+
+      // Send data to clients
+      const data: GameUpdateData = {
+        tanks: this.tanks,
+        bullets: this.bullets
+      }
       const message: WssOutMessage = {
-        messageType: WssOutMessageTypes.TanksUpdate,
-        data: JSON.stringify(this.tanks)
+        messageType: WssOutMessageTypes.GameUpdate,
+        data: JSON.stringify(data)
       }
       const jsonMessage = JSON.stringify(message);
       this.clients.forEach((client: WebSocket) => {
@@ -389,6 +404,227 @@ export class Game {
         client.send(endStateJsonMessage);
       });
     });
+  }
+
+  public async updateBullets() {
+    await lock.acquire("bullets" + this.gameCode, () => {
+      //Update bullet positions and collisions
+      for (let i = 0; i < this.bullets.length; ++i) {
+        // Remove bullet if timeout
+        if (!this.bullets[i].isAlive()) {
+          this.bullets.splice(i, 1);
+          i -= 1;
+          continue;
+        }
+
+        // Compute bounces
+        const roomX = Math.floor(this.bullets[i].positionX / this.maze.step);
+        const roomY = Math.floor(this.bullets[i].positionY / this.maze.step);
+        const room: Room = this.maze.rooms[roomY][roomX];
+
+        let foundBounce = false;
+        let wallErased = false;
+        if (room.plusX && ((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && this.bullets[i].incrementX > 0.0) {
+          this.bullets[i].bounceX();
+          foundBounce = true;
+          if (this.bullets[i].demolition && roomX < this.maze.numRoomsWide - 1) {
+            this.maze.rooms[roomY][roomX].plusX = false;
+            wallErased = true;
+            if (roomX + 1 < this.maze.numRoomsWide) {
+              this.maze.rooms[roomY][roomX + 1].minusX = false;
+            }
+          }
+        } else if (room.minusX && this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && this.bullets[i].incrementX < 0.0) {
+          this.bullets[i].bounceX();
+          foundBounce = true;
+          if (this.bullets[i].demolition && roomX > 0) {
+            this.maze.rooms[roomY][roomX].minusX = false;
+            wallErased = true;
+            if (roomX - 1 >= 0) {
+              this.maze.rooms[roomY][roomX - 1].plusX = false;
+            }
+          }
+        }
+        if (room.plusY && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && this.bullets[i].incrementY > 0.0) {
+          this.bullets[i].bounceY();
+          foundBounce = true;
+          if (this.bullets[i].demolition && roomY < this.maze.numRoomsHigh - 1) {
+            this.maze.rooms[roomY][roomX].plusY = false;
+            wallErased = true;
+            if (roomY + 1 < this.maze.numRoomsHigh) {
+              this.maze.rooms[roomY + 1][roomX].minusY = false;
+            }
+          }
+        } else if (room.minusY && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && this.bullets[i].incrementY < 0.0) {
+          this.bullets[i].bounceY();
+          foundBounce = true;
+          if (this.bullets[i].demolition && roomY > 0) {
+            this.maze.rooms[roomY][roomX].minusY = false;
+            wallErased = true;
+            if (roomY - 1 >= 0) {
+              this.maze.rooms[roomY - 1][roomX].plusY = false;
+            }
+          }
+        }
+
+        if (wallErased) {
+          this.sendMaze();
+          this.bullets.splice(i, 1);
+          i -= 1;
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.PlayAudio,
+            data: JSON.stringify(AudioType.Click)
+          }
+          const jsonMessage = JSON.stringify(message);
+          this.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
+          });
+          continue;
+        }
+
+        //Calculate filled corners
+        if (!foundBounce) {
+          if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.plusX && !room.plusY && roomX + 1 < this.maze.numRoomsWide && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX + 1].minusX && this.maze.rooms[roomY + 1][roomX + 1].minusY) {
+            this.bullets[i].bounceX();
+            this.bullets[i].bounceY();
+            foundBounce = true;
+          } else if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.plusX && !room.minusY && roomX + 1 < this.maze.numRoomsWide && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX + 1].minusX && this.maze.rooms[roomY - 1][roomX + 1].plusY) {
+            this.bullets[i].bounceX();
+            this.bullets[i].bounceY();
+            foundBounce = true;
+          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.minusX && !room.plusY && roomX - 1 >= 0 && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX - 1].plusX && this.maze.rooms[roomY + 1][roomX - 1].minusY) {
+            this.bullets[i].bounceX();
+            this.bullets[i].bounceY();
+            foundBounce = true;
+          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.minusX && !room.minusY && roomX - 1 >= 0 && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX - 1].plusX && this.maze.rooms[roomY - 1][roomX - 1].plusY) {
+            this.bullets[i].bounceX();
+            this.bullets[i].bounceY();
+            foundBounce = true;
+          }
+        }
+
+        if (foundBounce) {
+          const message: WssOutMessage = {
+            messageType: WssOutMessageTypes.PlayAudio,
+            data: JSON.stringify(AudioType.Click)
+          }
+          const jsonMessage = JSON.stringify(message);
+          this.clients.forEach((client: WebSocket) => {
+            client.send(jsonMessage);
+          });
+        }
+
+        // Move the bullet
+        this.bullets[i].move();
+      }
+
+      // Is the bullet colliding with a tank
+      this.tanks.forEach((tank: Tank) => {
+        const tankReference: TankInfo = this.getTankReference(tank.type);
+
+        //Rotate tank vertices
+        const rotatedPoints: Array<Point> = new Array<Point>();
+        const tankPoint: Point = new Point(tank.positionX, tank.positionY);
+        for (let i = 0; i < tankReference.vertices.length; ++i) {
+          const rotatedPoint: Point = rotatePoint(tankReference.vertices[i], tankReference.center, (tank.heading - 90) * Math.PI / -180.0);
+          rotatedPoints.push(rotatedPoint.subtract(tankReference.center).multiplyScalar(0.75).add(tankPoint));
+        }
+
+        // Build rotated edges
+        const rotatedEdges: Array<Line> = new Array<Line>();
+        for (let i = 0; i < rotatedPoints.length; ++i) {
+          if (i < rotatedPoints.length - 1) {
+            rotatedEdges.push(new Line(rotatedPoints[i], rotatedPoints[i + 1]));
+          } else {
+            rotatedEdges.push(new Line(rotatedPoints[i], rotatedPoints[0]));
+          }
+        }
+
+        for (let i = 0; i < this.bullets.length; ++i) {
+          if (this.bullets[i].isActive() && tank.alive && Math.sqrt(Math.pow(this.bullets[i].positionY - tank.positionY, 2) + Math.pow(this.bullets[i].positionX - tank.positionX, 2)) < tankReference.length && this.intersects(new Point(this.bullets[i].positionX, this.bullets[i].positionY), this.maze.step, rotatedEdges)) {
+  
+            if (tank.type !== 1 || !tank.ultimateActive) {
+              tank.health -= 1;
+              if (tank.health === 0) {
+                tank.alive = false;
+                //Tell server to play boom sound
+                const message: WssOutMessage = {
+                  messageType: WssOutMessageTypes.PlayAudio,
+                  data: JSON.stringify(AudioType.Boom)
+                }
+                const jsonMessage = JSON.stringify(message);
+                this.clients.forEach((client: WebSocket) => {
+                  client.send(jsonMessage);
+                });
+ 
+              } else {
+                //Tell server to play hit sound
+                const message: WssOutMessage = {
+                  messageType: WssOutMessageTypes.PlayAudio,
+                  data: JSON.stringify(AudioType.Hit)
+                }
+                const jsonMessage = JSON.stringify(message);
+                this.clients.forEach((client: WebSocket) => {
+                  client.send(jsonMessage);
+                });
+              }
+            }
+  
+            this.bullets.splice(i, 1);
+            i -= 1;
+          }
+        }
+      });
+    });
+  }
+
+  private intersects(point: Point, lineLength: number, edges: Array<Line>): boolean {
+    // Build intersection line
+    const intersectionLine: Line = new Line(new Point(point.x, point.y), new Point(point.x + lineLength, point.y));
+
+    // If the intersection point is inside or on the edges, correct tank position
+    let intersections = 0;
+    for (let i = 0; i < edges.length; ++i) {
+      if (intersectionLine.p1.y == edges[i].p1.y && intersectionLine.p1.x <= edges[i].p1.x && edges[i].p1.x <= intersectionLine.p2.x) {
+        intersections += 1;
+      } else if (intersectionLine.p1.y == edges[i].p2.y && intersectionLine.p1.x <= edges[i].p2.x && edges[i].p2.x <= intersectionLine.p2.x) {
+        intersections += 1;
+      } else if ((intersectionLine.p1.y > edges[i].p1.y && intersectionLine.p1.y < edges[i].p2.y) || (intersectionLine.p1.y < edges[i].p1.y && intersectionLine.p1.y > edges[i].p2.y)) {
+        const m = this.correctHeading(Math.atan2((edges[i].p1.y - edges[i].p2.y) * -1.0, edges[i].p1.x - edges[i].p2.x) * 180.0 / Math.PI);
+        const m1 = this.correctHeading(Math.atan2((intersectionLine.p1.y - edges[i].p2.y) * -1.0, intersectionLine.p1.x - edges[i].p2.x) * 180.0 / Math.PI);
+        const m2 = this.correctHeading(Math.atan2((intersectionLine.p2.y - edges[i].p2.y) * -1.0, intersectionLine.p2.x - edges[i].p2.x) * 180.0 / Math.PI);
+        if ((m === m1 && m !== m2) || (m === m2 && m !== m1)) {
+          intersections += 1;
+        } else if ((m > m1 && m < m2) || (m < m1 && m > m2)) {
+          intersections += 1;
+        }
+      }
+    }
+
+    return intersections % 2 === 1;
+  }
+
+  private correctHeading(heading: number): number {
+    if (heading < 0.0) {
+      heading += 360.0;
+    } else if (heading >= 360.0) {
+      heading -= 360.0;
+    }
+    return heading;
+  }
+
+  public getTankReference(type: number): TankInfo {
+    let tankReference: TankInfo;
+    if (type == 1) {
+      tankReference = TankTank;
+    } else if (type == 2) {
+      tankReference = AssaultTank;
+    } else if (type == 3) {
+      tankReference = ScoutTank;
+    } else {
+      tankReference = DemolitionTank;
+    }
+    return tankReference;
   }
 }
 
