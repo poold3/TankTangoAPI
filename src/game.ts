@@ -1,5 +1,5 @@
-import { CreateRequest, JoinRequest, StartRoundRequest, WssInMessage, WssInMessageTypes } from "./requests";
-import { CreateResponse, GameUpdateData, JoinResponse, StartRoundResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
+import { CreateRequest, JoinRequest, WssInMessage, WssInMessageTypes } from "./requests";
+import { CreateResponse, GameUpdateData, JoinResponse, WssOutMessage, WssOutMessageTypes} from "./responses";
 import { Server, WebSocket } from "ws";
 import AsyncLock from "async-lock";
 import { logger } from "./logger";
@@ -34,11 +34,6 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
         if (wssMessage.messageType === WssInMessageTypes.Connection) {
           tank = JSON.parse(wssMessage.data);
           await lock.acquire(gameCode, () => {
-            // If the first to join the game, make admin
-            if (game.tanks.length === 0) {
-              tank.gameAdmin = true;
-            }
-  
             // Assign a color to the new tank
             for (let i = 0; i < 4; ++i) {
               if (game.colorsAvailable[i]) {
@@ -84,25 +79,18 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
           await lock.acquire("bullets" + game.gameCode, () => {
             game.bullets.push(new Bullet(newBullet.id, newBullet.positionX, newBullet.positionY, newBullet.heading, newBullet.demolition));
           });
-          const message: WssOutMessage = {
-            messageType: WssOutMessageTypes.PlayAudio,
-            data: JSON.stringify(AudioType.Click)
-          }
-          const jsonMessage = JSON.stringify(message);
-          game.clients.forEach((client: WebSocket) => {
-            client.send(jsonMessage);
-          });
+          game.newBullet = true;
         } else if (wssMessage.messageType === WssInMessageTypes.PlayAudio) {
           const audioType: AudioType = JSON.parse(wssMessage.data);
           const message: WssOutMessage = {
             messageType: WssOutMessageTypes.PlayAudio,
-            data: JSON.stringify(audioType)
+            data: JSON.stringify([audioType])
           }
           const jsonMessage = JSON.stringify(message);
           game.clients.forEach((client: WebSocket) => {
             client.send(jsonMessage);
           });
-        } else if (wssMessage.messageType === WssInMessageTypes.WaitingRoomTankUpdate) {
+        } else if (wssMessage.messageType === WssInMessageTypes.WaitingRoomUpdate) {
           tank = JSON.parse(wssMessage.data);
           await lock.acquire(gameCode, () => {
             // Replace current tank with new tank
@@ -123,6 +111,19 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
             game.clients.forEach((client: WebSocket) => {
               client.send(jsonMessage);
             });
+
+            // Are we ready to start the round?
+            let ready: boolean = true;
+            for (let i = 0; i < game.tanks.length; ++i) {
+              if (game.tanks[i].ready === false) {
+                ready = false;
+                break;
+              }
+            }
+            if (ready && game.tanks.length > 1) {
+              game.startRound();
+              game.startRunning();
+            }
           }
         } else if (wssMessage.messageType === WssInMessageTypes.NewChatMessage) {
           const message: WssOutMessage = {
@@ -153,10 +154,6 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
   
             if (game.tanks.length > 0) {
               // Still players in the game
-              // Reassign the game admin if this tank was the admin
-              if (tank.gameAdmin) {
-                game.tanks[0].gameAdmin = true;
-              }
   
               // If the game is in the waiting stage, send a selectedtanksupdate to update the waiting room
               if (game.state === GameState.Waiting) {
@@ -224,6 +221,10 @@ export class Game {
   public colorsAvailable: Array<boolean>;
   public runningInterval: number = 0;
   public maze: Maze;
+  public newBullet: boolean = false;
+  public playClick: boolean = false;
+  public playHit: boolean = false;
+  public playBoom: boolean = false;
 
   constructor(gameCode: string) {
     this.gameCode = gameCode;
@@ -321,6 +322,7 @@ export class Game {
         // Make tank alive and ultimate not active
         this.tanks[i].alive = true;
         this.tanks[i].ultimateActive = false;
+        this.tanks[i].ready = false;
 
         // Set tank health
         this.tanks[i].health = tankReference.health;
@@ -382,6 +384,29 @@ export class Game {
       this.clients.forEach((client: WebSocket) => {
         client.send(jsonMessage);
       });
+
+      // Build sounds array and send
+      const sounds = new Array<AudioType>();
+      if (this.playClick || this.newBullet) {
+        sounds.push(AudioType.Click);
+        this.newBullet = false;
+      }
+      if (this.playHit) {
+        sounds.push(AudioType.Hit);
+      }
+      if (this.playBoom) {
+        sounds.push(AudioType.Boom)
+      }
+      if (sounds.length > 0) {
+        const message: WssOutMessage = {
+          messageType: WssOutMessageTypes.PlayAudio,
+          data: JSON.stringify(sounds)
+        }
+        const jsonMessage = JSON.stringify(message);
+        this.clients.forEach((client: WebSocket) => {
+          client.send(jsonMessage);
+        });
+      }
     }
 
     await lock.acquire(this.gameCode, async (): Promise<void> => {
@@ -418,6 +443,7 @@ export class Game {
   public async updateBullets() {
     await lock.acquire("bullets" + this.gameCode, () => {
       //Update bullet positions and collisions
+      this.playClick = false;
       for (let i = 0; i < this.bullets.length; ++i) {
         // Remove bullet if timeout
         if (!this.bullets[i].isAlive()) {
@@ -433,7 +459,7 @@ export class Game {
 
         let foundBounce = false;
         let wallErased = false;
-        if (room.plusX && ((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && this.bullets[i].incrementX > 0.0) {
+        if (this.bullets[i].incrementX > 0.0 && room.plusX && ((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed) {
           this.bullets[i].bounceX();
           foundBounce = true;
           if (this.bullets[i].demolition && roomX < this.maze.numRoomsWide - 1) {
@@ -443,7 +469,7 @@ export class Game {
               this.maze.rooms[roomY][roomX + 1].minusX = false;
             }
           }
-        } else if (room.minusX && this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && this.bullets[i].incrementX < 0.0) {
+        } else if (this.bullets[i].incrementX < 0.0 && room.minusX && this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed) {
           this.bullets[i].bounceX();
           foundBounce = true;
           if (this.bullets[i].demolition && roomX > 0) {
@@ -454,7 +480,7 @@ export class Game {
             }
           }
         }
-        if (room.plusY && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && this.bullets[i].incrementY > 0.0) {
+        if (this.bullets[i].incrementY > 0.0 && room.plusY && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed) {
           this.bullets[i].bounceY();
           foundBounce = true;
           if (this.bullets[i].demolition && roomY < this.maze.numRoomsHigh - 1) {
@@ -464,7 +490,7 @@ export class Game {
               this.maze.rooms[roomY + 1][roomX].minusY = false;
             }
           }
-        } else if (room.minusY && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && this.bullets[i].incrementY < 0.0) {
+        } else if (this.bullets[i].incrementY < 0.0 && room.minusY && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed) {
           this.bullets[i].bounceY();
           foundBounce = true;
           if (this.bullets[i].demolition && roomY > 0) {
@@ -480,32 +506,25 @@ export class Game {
           this.sendMaze();
           this.bullets.splice(i, 1);
           i -= 1;
-          const message: WssOutMessage = {
-            messageType: WssOutMessageTypes.PlayAudio,
-            data: JSON.stringify(AudioType.Click)
-          }
-          const jsonMessage = JSON.stringify(message);
-          this.clients.forEach((client: WebSocket) => {
-            client.send(jsonMessage);
-          });
+          this.playClick = true;
           continue;
         }
 
         //Calculate filled corners
         if (!foundBounce) {
-          if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.plusX && !room.plusY && roomX + 1 < this.maze.numRoomsWide && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX + 1].minusX && this.maze.rooms[roomY + 1][roomX + 1].minusY) {
+          if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.plusX && !room.plusY && roomX + 1 < this.maze.numRoomsWide && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX + 1].minusX && this.maze.rooms[roomY + 1][roomX + 1].minusY && this.bullets[i].heading < 360.0 && this.bullets[i].heading > 270.0) {
             this.bullets[i].bounceX();
             this.bullets[i].bounceY();
             foundBounce = true;
-          } else if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.plusX && !room.minusY && roomX + 1 < this.maze.numRoomsWide && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX + 1].minusX && this.maze.rooms[roomY - 1][roomX + 1].plusY) {
+          } else if (((roomX + 1) * this.maze.step) - this.bullets[i].positionX <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.plusX && !room.minusY && roomX + 1 < this.maze.numRoomsWide && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX + 1].minusX && this.maze.rooms[roomY - 1][roomX + 1].plusY && this.bullets[i].heading < 90.0 && this.bullets[i].heading > 0.0) {
             this.bullets[i].bounceX();
             this.bullets[i].bounceY();
             foundBounce = true;
-          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.minusX && !room.plusY && roomX - 1 >= 0 && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX - 1].plusX && this.maze.rooms[roomY + 1][roomX - 1].minusY) {
+          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && ((roomY + 1) * this.maze.step) - this.bullets[i].positionY <= BulletInfo.speed && !room.minusX && !room.plusY && roomX - 1 >= 0 && roomY + 1 < this.maze.numRoomsHigh && this.maze.rooms[roomY + 1][roomX - 1].plusX && this.maze.rooms[roomY + 1][roomX - 1].minusY && this.bullets[i].heading < 270.0 && this.bullets[i].heading > 180.0) {
             this.bullets[i].bounceX();
             this.bullets[i].bounceY();
             foundBounce = true;
-          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.minusX && !room.minusY && roomX - 1 >= 0 && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX - 1].plusX && this.maze.rooms[roomY - 1][roomX - 1].plusY) {
+          } else if (this.bullets[i].positionX - (roomX * this.maze.step) <= BulletInfo.speed && this.bullets[i].positionY - (roomY * this.maze.step) <= BulletInfo.speed && !room.minusX && !room.minusY && roomX - 1 >= 0 && roomY - 1 >= 0 && this.maze.rooms[roomY - 1][roomX - 1].plusX && this.maze.rooms[roomY - 1][roomX - 1].plusY && this.bullets[i].heading < 180.0 && this.bullets[i].heading > 90.0) {
             this.bullets[i].bounceX();
             this.bullets[i].bounceY();
             foundBounce = true;
@@ -513,14 +532,7 @@ export class Game {
         }
 
         if (foundBounce) {
-          const message: WssOutMessage = {
-            messageType: WssOutMessageTypes.PlayAudio,
-            data: JSON.stringify(AudioType.Click)
-          }
-          const jsonMessage = JSON.stringify(message);
-          this.clients.forEach((client: WebSocket) => {
-            client.send(jsonMessage);
-          });
+          this.playClick = true;
         }
 
         // Move the bullet
@@ -528,6 +540,8 @@ export class Game {
       }
 
       // Is the bullet colliding with a tank
+      this.playHit = false;
+      this.playBoom = false;
       this.tanks.forEach((tank: Tank) => {
         const tankReference: TankInfo = this.getTankReference(tank.type);
 
@@ -557,25 +571,11 @@ export class Game {
               if (tank.health === 0) {
                 tank.alive = false;
                 //Tell server to play boom sound
-                const message: WssOutMessage = {
-                  messageType: WssOutMessageTypes.PlayAudio,
-                  data: JSON.stringify(AudioType.Boom)
-                }
-                const jsonMessage = JSON.stringify(message);
-                this.clients.forEach((client: WebSocket) => {
-                  client.send(jsonMessage);
-                });
+                this.playBoom = true;
  
               } else {
                 //Tell server to play hit sound
-                const message: WssOutMessage = {
-                  messageType: WssOutMessageTypes.PlayAudio,
-                  data: JSON.stringify(AudioType.Hit)
-                }
-                const jsonMessage = JSON.stringify(message);
-                this.clients.forEach((client: WebSocket) => {
-                  client.send(jsonMessage);
-                });
+                this.playHit = true;
               }
             }
   
@@ -706,33 +706,6 @@ export async function joinGame(joinRequest: JoinRequest): Promise<JoinResponse> 
       response.message = "This game already has 4 players.";
       return response;
     }
-
-    response.success = true;
-  } catch (error) {
-    logger.error(error);
-    response.success = false;
-    response.message = "An error occurred while joining your game. Please try again later.";
-  }
-  return response;
-}
-
-export async function startRound(startRoundRequest: StartRoundRequest): Promise<StartRoundResponse> {
-  const response: StartRoundResponse = {
-    success: false,
-    message: ""
-  }
-  try {
-    let game: Game | undefined;
-    await lock.acquire("games", () => {
-      game = games.get(startRoundRequest.gameCode);
-    });
-    if (!game) {
-      response.success = false;
-      response.message = "Invalid game code.";
-      return response;
-    }
-    game.startRound();
-    game.startRunning();
 
     response.success = true;
   } catch (error) {

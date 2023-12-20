@@ -12,11 +12,6 @@ export interface JoinResponse {
   message: string;
 }
 
-export interface StartRoundResponse {
-  success: boolean;
-  message: string;
-}
-
 export enum WssOutMessageTypes {
   Maze,
   GameUpdate,

@@ -3,7 +3,6 @@ import { Point } from "./point";
 
 export class Tank {
   public gamerName: string;
-  public gameAdmin: boolean = false;
   public type: number;
   public score: number = 0;
   public ultimateActive: boolean = false;
@@ -14,6 +13,7 @@ export class Tank {
   public turretHeading: number = 0.0;
   public color: number = 0;
   public health: number = 0;
+  public ready: boolean = false;
 
   constructor(gamerName: string, type: number) {
     this.gamerName = gamerName;
