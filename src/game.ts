@@ -365,9 +365,13 @@ export class Game {
         client.send(stateJsonMessage);
       });
     });
-    
-    while (this.getNumAlive() > 1) {
-      await timer(16);
+
+    const gameInterval = setInterval(() => {
+      if (this.getNumAlive() <= 1) {
+        clearInterval(gameInterval);
+        this.endRound();
+        return;
+      }
       // Move and bounce bullets
       this.updateBullets();
 
@@ -407,8 +411,10 @@ export class Game {
           client.send(jsonMessage);
         });
       }
-    }
+    }, 16);
+  }
 
+  private async endRound() {
     await lock.acquire(this.gameCode, async (): Promise<void> => {
       //Update gameState to waiting
       this.state = GameState.Waiting;

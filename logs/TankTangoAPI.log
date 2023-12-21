@@ -2186,3 +2186,11 @@
 {"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-20T21:52:15.566Z"}
 {"level":"info","message":"Created new game: 831823","timestamp":"2023-12-20T21:52:36.881Z"}
 {"level":"info","message":"Ending game: 831823","timestamp":"2023-12-20T21:55:16.526Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-21T20:07:24.249Z"}
+{"level":"info","message":"Created new game: 321111","timestamp":"2023-12-21T20:07:44.889Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-21T20:10:08.950Z"}
+{"level":"info","message":"Created new game: 790662","timestamp":"2023-12-21T20:10:18.274Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-21T20:11:31.754Z"}
+{"level":"info","message":"Created new game: 516698","timestamp":"2023-12-21T20:11:55.195Z"}
+{"level":"info","message":"Ending game: 516698","timestamp":"2023-12-21T20:14:29.556Z"}
+{"level":"info","message":"API Server is listening on port 3000!","timestamp":"2023-12-21T20:14:41.186Z"}
