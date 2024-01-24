@@ -176,7 +176,7 @@ export function setUpWebSocket(wss: Server<typeof WebSocket, typeof IncomingMess
   
     } else {
       logger.error("INVALID GAME CODE: " + gameCode);
-      // Try to send error message to clients
+      // Try to send error message to client
       const errorMessage: WssOutMessage = {
         messageType: WssOutMessageTypes.Error,
         data: JSON.stringify("INVALID GAME CODE: " + gameCode)
